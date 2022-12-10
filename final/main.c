@@ -58,27 +58,32 @@ int main(void)
 	
 	//USART_Transmit('s');
 	updatePWM(v);
-	set_LED(1,1);
-	set_LED(0,1);
 	
 	int led = 0;
 	unsigned char c;
 
+	set_LED(0,1);
+
 	while (1)
     {
 		c =	USART_Receive();
+		
+		USART_Transmit(c);
 
 		switch (c) {
 			case 's':
-				send_speed(counter_register[cur_buff_index]);
+				//send_speed(counter_register[cur_buff_index]);
 				break;
 			case 'v':
-				USART_Transmit((char) v);		
+				USART_Transmit((char) v);
+				set_LED(1, !led);
+				break;
 			default:
+				set_LED(3, 1);
 				break;
 		}
 	}
-	
+
     return 0;
 }
 

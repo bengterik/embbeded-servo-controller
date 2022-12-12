@@ -39,7 +39,6 @@ unsigned char USART_Receive(void);
 void init_timer_16(void);
 void register_time(int i);
 
-
 // SPEED
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
@@ -49,10 +48,12 @@ unsigned int rpm();
 volatile int AB = 3;
 volatile int v = 255;
 
-
-
 int main(void)
 {
+	MCUSR &= ~(1<<WDRF);
+	//WDTCSR |= (1<<WDCE) | (1<<WDE);
+	WDTCSR = 0x00;
+
 	init_LEDs();
 	init_INTs();
 	init_PWM();
@@ -63,14 +64,24 @@ int main(void)
 
 	init_timer_16();
 	
+	
 	sei(); // Globally enable interrupts
-	
-	//USART_Transmit('s');
-	updatePWM(v);
-	
+		
 	unsigned char c;
 
 	set_LED(0,1);
+	_delay_ms(100);
+	set_LED(0,0);
+	set_LED(1,1);
+	_delay_ms(100);
+	set_LED(1,0);
+	set_LED(2,1);
+	_delay_ms(100);
+	set_LED(2,0);
+	set_LED(3,1);
+	_delay_ms(1000);
+	set_LED(3,0);
+	
 
 	while (1)
     {
@@ -80,10 +91,7 @@ int main(void)
 
 		switch (c) {
 			case 's':
-				while(1) {
-					send_int(rpm());
-					_delay_ms(100);
-				}
+				
 				break;
 			case 'v':
 				USART_Transmit((char) v);
@@ -92,6 +100,9 @@ int main(void)
 
 			case 'd':
 				set_LED(2, 1);
+				for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
+					//send_int(counter_register[i]);
+				}
 
 				break;
 			default:
@@ -100,7 +111,23 @@ int main(void)
 		}
 	}
 
-    return 0;
+	while(1) {
+		set_LED(3,1);
+		_delay_ms(100);
+		set_LED(3,0);
+		set_LED(2,1);
+		_delay_ms(100);
+		set_LED(2,0);
+		set_LED(1,1);
+		_delay_ms(100);
+		set_LED(1,0);
+		set_LED(0,1);
+		_delay_ms(100);
+		set_LED(0,0);
+	}
+
+	return 0;
+
 }
 
 unsigned int rpm() {
@@ -126,19 +153,16 @@ void send_int(unsigned int value) {
 
 ISR(PCINT1_vect, ISR_BLOCK)
 {
-	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-		int i = TCNT1; // Read timer
-		register_time(i); // Puts ticks in buffer
-		TCNT1 = 0;	// Timer = 0
-	}
+	int i = TCNT1; // Read timer
+	
+	counter_register[cur_buff_index%COUNTER_BUF_SIZE] = i; // Store timer value in buffer
+	cur_buff_index++; 
+	send_int(cur_buff_index);
+	
+	TCNT1 = 0;	// Timer = 0
 }
 
 ISR(PCINT2_vect, ISR_ALIASOF(PCINT1_vect)); // Redirect interrupt on PCINT2_vect PCINT1_vect routine (no need to copy the same code)
-
-void register_time(int i) {
-	counter_register[cur_buff_index%COUNTER_BUF_SIZE] = i;
-	cur_buff_index++;	
-}
 
 void init_timer_16(void) {
 	TCCR1B |= (1<<CS11); // Prescaler 8

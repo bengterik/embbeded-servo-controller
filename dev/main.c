@@ -19,7 +19,7 @@
 #include <stdio.h>
 #include <util/atomic.h>
 
-#define COUNTER_BUF_SIZE 8
+#define COUNTER_BUF_SIZE 16
 #define PRESCALER 8
 
 #define TICK_LOWER_BOUND 310
@@ -241,7 +241,7 @@ int main(void)
 
 			case 'd':
 				set_LED(2, 1);
-				update_pwm(255);
+				update_pwm(120);
 
 				while(1) {
 					_delay_ms(500);

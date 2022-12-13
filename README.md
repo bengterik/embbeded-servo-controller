@@ -1,0 +1,1 @@
+Control program for a small servo motor involving a computer and circuits running an Atmega88.

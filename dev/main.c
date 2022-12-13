@@ -19,158 +19,14 @@
 #include <stdio.h>
 #include <util/atomic.h>
 
-int init_LEDs(void);
-int init_INTs(void);
-int init_PWM(void);
-
-int set_LED(int position, int value);
-int updatePWM(int value);
-
-//USART
-void init_RxTx(void);
-void USART_Init(unsigned int ubrr);
-void USART_Transmit(char data);
-void send_int(unsigned int value);
-unsigned char USART_Receive(void);
-
-//TIMER
 #define COUNTER_BUF_SIZE 8
+#define PRESCALER 8
 
-void init_timer_16(void);
-void register_time(int i);
-
-// SPEED
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
-unsigned int average_ticks();
-unsigned int rpm();
 
 volatile int AB = 3;
-volatile int v = 255;
-
-int main(void)
-{
-	MCUSR &= ~(1<<WDRF);
-	//WDTCSR |= (1<<WDCE) | (1<<WDE);
-	WDTCSR = 0x00;
-
-	init_LEDs();
-	init_INTs();
-	init_PWM();
-	
-	init_LEDs();
-	init_RxTx();
-	USART_Init(MYUBRR);
-
-	init_timer_16();
-	
-	
-	sei(); // Globally enable interrupts
-		
-	unsigned char c;
-
-	set_LED(0,1);
-	_delay_ms(100);
-	set_LED(0,0);
-	set_LED(1,1);
-	_delay_ms(100);
-	set_LED(1,0);
-	set_LED(2,1);
-	_delay_ms(100);
-	set_LED(2,0);
-	set_LED(3,1);
-	_delay_ms(1000);
-	set_LED(3,0);
-	
-
-	while (1)
-    {
-		c =	USART_Receive();
-		
-		USART_Transmit(c);
-
-		switch (c) {
-			case 's':
-				
-				break;
-			case 'v':
-				USART_Transmit((char) v);
-				set_LED(1, 1);
-				break;
-
-			case 'd':
-				set_LED(2, 1);
-				for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
-					//send_int(counter_register[i]);
-				}
-
-				break;
-			default:
-				set_LED(3, 1);
-				break;
-		}
-	}
-
-	while(1) {
-		set_LED(3,1);
-		_delay_ms(100);
-		set_LED(3,0);
-		set_LED(2,1);
-		_delay_ms(100);
-		set_LED(2,0);
-		set_LED(1,1);
-		_delay_ms(100);
-		set_LED(1,0);
-		set_LED(0,1);
-		_delay_ms(100);
-		set_LED(0,0);
-	}
-
-	return 0;
-
-}
-
-unsigned int rpm() {
-	return 60*F_CPU/(average_ticks()*8);
-}
-
-unsigned int average_ticks() {
-	unsigned int sum = 0;
-	for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
-		sum += counter_register[i];
-	}
-	return sum/COUNTER_BUF_SIZE;
-}
-
-void send_int(unsigned int value) {
-	unsigned char bytes[2];
-
-	for(int i = 0; i < 2; i++) {
-		bytes[i] = (char) (value >> (i*8));
-		USART_Transmit(bytes[i]);
-	}
-}
-
-ISR(PCINT1_vect, ISR_BLOCK)
-{
-	int i = TCNT1; // Read timer
-	
-	counter_register[cur_buff_index%COUNTER_BUF_SIZE] = i; // Store timer value in buffer
-	cur_buff_index++; 
-	send_int(cur_buff_index);
-	
-	TCNT1 = 0;	// Timer = 0
-}
-
-ISR(PCINT2_vect, ISR_ALIASOF(PCINT1_vect)); // Redirect interrupt on PCINT2_vect PCINT1_vect routine (no need to copy the same code)
-
-void init_timer_16(void) {
-	TCCR1B |= (1<<CS11); // Prescaler 8
-	
-	TIFR1 |= (1<<TOV1); // Clear overflow flag
-
-	TIMSK1 |= (1<<TOIE1); // Enable overflow interrupt
-}
+volatile int v = 0;
 
 void USART_Transmit(char data) {
 	while(!(UCSR0A & (1<<UDRE0))); // Wait for empty transmit buffer
@@ -198,7 +54,24 @@ void USART_Init(unsigned int ubrr) {
 	UCSR0C = (3<<UCSZ00); // 8 bits
 }
 
-int updatePWM(int value)
+void send_int(unsigned int value) {
+	unsigned char bytes[2];
+
+	for(int i = 0; i < 2; i++) {
+		bytes[i] = (char) (value >> (i*8));
+		USART_Transmit(bytes[i]);
+	}
+}
+
+void init_timer_16(void) {
+	TCCR1B |= (1<<CS11); // Prescaler 8
+	
+	TIFR1 |= (1<<TOV1); // Clear overflow flag
+
+	//TIMSK1 |= (1<<TOIE1); // Enable overflow interrupt // IF NOT CAUGHT WILL RESET
+}
+
+int update_pwm(int value)
 {
 	OCR0A = value;
 	OCR0B = value;
@@ -284,4 +157,93 @@ int set_LED(int led, int value)
 		
 	}
 	return 1;
+}
+
+ISR(PCINT1_vect, ISR_BLOCK)
+{
+	int i = TCNT1; // Read timer
+	
+	counter_register[cur_buff_index%COUNTER_BUF_SIZE] = i; // Store timer value in buffer
+	cur_buff_index++; 
+	
+	TCNT1 = 0;	// Timer = 0
+}
+
+ISR(PCINT2_vect, ISR_ALIASOF(PCINT1_vect)); // Redirect interrupt on PCINT2_vect PCINT1_vect routine (no need to copy the same code)
+
+unsigned long ticks_sum() {
+	unsigned long sum = 0;
+	for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
+		sum += counter_register[i];
+	}
+	return sum;
+}
+
+unsigned int rpm() {
+	return (60*F_CPU*COUNTER_BUF_SIZE)/((long) ticks_sum()*PRESCALER*96);
+}
+
+int main(void)
+{
+	init_LEDs();
+	init_INTs();
+	init_PWM();
+	
+	init_LEDs();
+	init_RxTx();
+	USART_Init(MYUBRR);
+
+	init_timer_16();
+	
+	sei(); // Globally enable interrupts
+		
+	unsigned char c;
+
+	set_LED(0,1);
+	_delay_ms(10);
+	set_LED(0,0);
+	set_LED(1,1);
+	_delay_ms(10);
+	set_LED(1,0);
+	set_LED(2,1);
+	_delay_ms(10);
+	set_LED(2,0);
+	set_LED(3,1);
+	_delay_ms(10);
+	set_LED(3,0);	
+
+	while (1)
+    {
+		c =	USART_Receive();
+		
+		USART_Transmit(c);
+
+		switch (c) {
+			case 's':
+				
+				break;
+			case 'v':
+				USART_Transmit((char) v);
+				set_LED(1, 1);
+				break;
+
+			case 'd':
+				set_LED(2, 1);
+				update_pwm(255);
+
+				//for(int i = 0; i < 8; i++) {
+				while(1) {
+					_delay_ms(1000);
+					send_int(rpm());
+				}
+
+				break;
+			default:
+				set_LED(3, 1);
+				break;
+		}
+	}
+
+	return 0;
+
 }

@@ -22,11 +22,16 @@
 #define COUNTER_BUF_SIZE 8
 #define PRESCALER 8
 
+#define TICK_LOWER_BOUND 310
+#define TICK_UPPER_BOUND 17000
+
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
 
 volatile int AB = 3;
 volatile int v = 0;
+
+unsigned long ticks_sum();
 
 void USART_Transmit(char data) {
 	while(!(UCSR0A & (1<<UDRE0))); // Wait for empty transmit buffer
@@ -73,7 +78,8 @@ void init_timer_16(void) {
 
 int update_pwm(int value)
 {
-	OCR0A = value;
+	v = value;
+	//OCR0A = value;
 	OCR0B = value;
 	return value;
 }
@@ -163,7 +169,13 @@ ISR(PCINT1_vect, ISR_BLOCK)
 {
 	int i = TCNT1; // Read timer
 	
-	counter_register[cur_buff_index%COUNTER_BUF_SIZE] = i; // Store timer value in buffer
+	int index = cur_buff_index%COUNTER_BUF_SIZE;
+	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) {
+		counter_register[index] = i; // Store timer value in buffer
+	} else {
+		counter_register[index] = counter_register[(index+7)%COUNTER_BUF_SIZE]; // If value is outside range take previous value
+	}
+	
 	cur_buff_index++; 
 	
 	TCNT1 = 0;	// Timer = 0
@@ -231,10 +243,12 @@ int main(void)
 				set_LED(2, 1);
 				update_pwm(255);
 
-				//for(int i = 0; i < 8; i++) {
 				while(1) {
-					_delay_ms(1000);
+					_delay_ms(500);
 					send_int(rpm());
+					// for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
+					// 	send_int(counter_register[i]);
+					// }
 				}
 
 				break;

@@ -24,8 +24,5 @@ def main():
     # print the results
     print('Average: %.2f' % average)
     print('Standard deviation: %.2f' % std_dev)
-    print('Procent of values above 15500 = %.5f' % (len([i for i in numbers if i > 15500])))
-    print('Procent of values below 650 = %.5f' % len([i for i in numbers if i < 650]))
-    print('Length is %d' % len(numbers))
 
 main()

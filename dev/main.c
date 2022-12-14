@@ -279,7 +279,7 @@ int control(){
 	
 	y = rpm();
 	e = ref - y;
-	v = K*(e + I);
+	v = K*(e + I); // Både e och I * med K?
 	
 	update_pwm(v*255/120);
 

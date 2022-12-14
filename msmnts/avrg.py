@@ -2,7 +2,6 @@ import sys
 import math
 
 
-# read in numbers from a file and get their average and standard deviation
 def main():
     filename = sys.argv[1]
     infile = open(filename, 'r')

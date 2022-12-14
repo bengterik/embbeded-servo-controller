@@ -170,10 +170,12 @@ ISR(PCINT1_vect, ISR_BLOCK)
 	int i = TCNT1; // Read timer
 	
 	int index = cur_buff_index%COUNTER_BUF_SIZE;
+
 	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) {
 		counter_register[index] = i; // Store timer value in buffer
 	} else {
-		counter_register[index] = counter_register[(index+7)%COUNTER_BUF_SIZE]; // If value is outside range take previous value
+		int previous_index = (index+COUNTER_BUF_SIZE-1)%COUNTER_BUF_SIZE; // Some arithmetic to avoid negative indices
+		counter_register[index] = counter_register[previous_index]; // If value is outside range take previous value
 	}
 	
 	cur_buff_index++; 
@@ -241,9 +243,18 @@ int main(void)
 
 			case 'd':
 				set_LED(2, 1);
-				update_pwm(120);
-
+				update_pwm(0);
+				int i = 1;
 				while(1) {
+					if (i%10 == 0) {
+						if (v == 0) {
+							v = 255; // increase speed every 10th iteration
+						} else {
+							v = 0;
+						}
+						update_pwm(v);
+					}
+					i++;
 					_delay_ms(500);
 					send_int(rpm());
 					// for(int i = 0; i < COUNTER_BUF_SIZE; i++) {

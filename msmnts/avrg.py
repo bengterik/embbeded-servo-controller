@@ -1,5 +1,6 @@
 import sys
 import math
+import matplotlib.pyplot as plt
 
 
 def main():
@@ -23,5 +24,15 @@ def main():
     # print the results
     print('Average: %.2f' % average)
     print('Standard deviation: %.2f' % std_dev)
+
+def plot(filename):
+    # plot in histogram
+    infile = open(filename, 'r')
+    numbers = []
+    for line in infile:
+        if (not line.startswith('\n')):
+            numbers.append(float(line))
+    
+    plt.hist(numbers, bins=30)
 
 main()

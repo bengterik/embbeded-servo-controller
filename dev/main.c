@@ -29,8 +29,16 @@ volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
 
 volatile int AB = 0;
-volatile int v = 0;
-volatile int awaiting_speed = 0;
+volatile int pwm = 0;
+volatile int aw_speed = 0;
+
+// Control variables
+volatile int ref = 0;
+int I = 0;
+float K = 0;
+float Ti = 0;
+int sat_up = 120;
+int sat_low = 5;
 
 unsigned long ticks_sum();
 
@@ -80,7 +88,7 @@ void init_timer_16(void) {
 
 int update_pwm(int value)
 {
-	v = value;
+	pwm = value;
 	//OCR0A = value;
 	OCR0B = value;
 	return value;
@@ -179,12 +187,12 @@ int set_LED(int led, int value)
 void pwm_duty_update(int a, int b) {
 	char newAB = (a<<1) | b;
 	
-	switch (AB) {
-		case 0: if(newAB==1) v+=1; else v-=1; break;
-		case 1: if(newAB==3) v+=1; else v-=1; break;
-		case 3: if(newAB==2) v+=1; else v-=1; break;
-		case 2: if(newAB==0) v+=1; else v-=1; break;
-	}
+	// switch (AB) {
+	// 	case 0: if(newAB==1) v+=1; else v-=1; break;
+	// 	case 1: if(newAB==3) v+=1; else v-=1; break;
+	// 	case 3: if(newAB==2) v+=1; else v-=1; break;
+	// 	case 2: if(newAB==0) v+=1; else v-=1; break;
+	// }
 	
 	AB = newAB;
 }
@@ -233,20 +241,20 @@ ISR(USART_RX_vect, ISR_BLOCK){
 		
 	USART_Transmit(c);
 
-	if (awaiting_speed) {
-		awaiting_speed = 0;
+	if (aw_speed) {
+		aw_speed = 0;
 		set_LED(1, 0);
 		update_pwm(c);
 	} else {
 		switch (c) {
 			case 's':
-				if (!awaiting_speed) {
-					awaiting_speed = 1;
+				if (!aw_speed) {
+					aw_speed = 1;
 					set_LED(1, 1);
 				}
 				break;
 			case 'v':
-				USART_Transmit((char) v);
+				USART_Transmit((char) pwm);
 				set_LED(1, 1);
 				break;
 
@@ -264,6 +272,19 @@ ISR(USART_RX_vect, ISR_BLOCK){
 	}
 }
 
+int control(){
+	int y;
+	int e;
+	int v;
+	
+	y = rpm();
+	e = ref - y;
+	v = K*(e + I);
+	
+	update_pwm(v*255/120);
+
+	I += (K/Ti)*e;
+}
 
 int main(void)
 {

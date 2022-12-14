@@ -30,6 +30,7 @@ volatile unsigned int cur_buff_index = 0;
 
 volatile int AB = 0;
 volatile int v = 0;
+volatile int awaiting_speed = 0;
 
 unsigned long ticks_sum();
 
@@ -54,9 +55,10 @@ void USART_Init(unsigned int ubrr) {
 	UBRR0H = (unsigned char) (ubrr>>8);
 	UBRR0L = (unsigned char) ubrr;
 	
-	UCSR0B = (1<<RXEN0) | (1<<TXEN0);
+	UCSR0B = (1<<RXEN0) | (1<<TXEN0) | (1<<RXCIE0); // Enable RX, TX and RX interrupt
 	//UCSR0C &= ~(1<<USBS0); // 1 stop bit
 	UCSR0C = (3<<UCSZ00); // 8 bits
+	// enable interrupt on data receive
 }
 
 void send_int(unsigned int value) {
@@ -226,6 +228,43 @@ unsigned int rpm() {
 	return (60*F_CPU*COUNTER_BUF_SIZE)/((long) ticks_sum()*PRESCALER*96);
 }
 
+ISR(USART_RX_vect, ISR_BLOCK){
+	char c = USART_Receive();
+		
+	USART_Transmit(c);
+
+	if (awaiting_speed) {
+		awaiting_speed = 0;
+		set_LED(1, 0);
+		update_pwm(c);
+	} else {
+		switch (c) {
+			case 's':
+				if (!awaiting_speed) {
+					awaiting_speed = 1;
+					set_LED(1, 1);
+				}
+				break;
+			case 'v':
+				USART_Transmit((char) v);
+				set_LED(1, 1);
+				break;
+
+			case 'd':
+				set_LED(2, 1);
+				
+				update_pwm(0);
+				send_int(rpm());
+				
+				break;
+			default:
+				set_LED(3, 1);
+				break;
+		}
+	}
+}
+
+
 int main(void)
 {
 	init_LEDs();
@@ -244,8 +283,6 @@ int main(void)
 	
 	sei(); // Globally enable interrupts
 		
-	unsigned char c;
-
 	set_LED(0,1);
 	_delay_ms(10);
 	set_LED(0,0);
@@ -258,48 +295,12 @@ int main(void)
 	set_LED(3,1);
 	_delay_ms(10);
 	set_LED(3,0);	
-
+	int led = 0;
 	while (1)
     {
-		c =	USART_Receive();
-		
-		USART_Transmit(c);
-
-		switch (c) {
-			case 's':
-				
-				break;
-			case 'v':
-				USART_Transmit((char) v);
-				set_LED(1, 1);
-				break;
-
-			case 'd':
-				set_LED(2, 1);
-				update_pwm(0);
-				int i = 1;
-				while(1) {
-					// if (i%10 == 0) {
-					// 	if (v == 0) {
-					// 		v = 255; // increase speed every 10th iteration
-					// 	} else {
-					// 		v = 0;
-					// 	}
-					// 	update_pwm(v);
-					// }
-					// i++;
-					_delay_ms(500);
-					send_int(rpm());
-					// for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
-					// 	send_int(counter_register[i]);
-					// }
-				}
-
-				break;
-			default:
-				set_LED(3, 1);
-				break;
-		}
+		_delay_ms(1000);
+		set_LED(0, !led);
+		led = !led;
 	}
 
 	return 0;

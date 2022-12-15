@@ -241,38 +241,32 @@ ISR(USART_RX_vect, ISR_BLOCK){
 		
 	USART_Transmit(c);
 
-	if (aw_speed) {
-		aw_speed = 0;
-		set_LED(1, 0);
-		update_pwm(c);
-	} else {
-		switch (c) {
-			case 's':
-				if (!aw_speed) {
-					aw_speed = 1;
-					set_LED(1, 1);
-				}
-				break;
-			case 'v':
-				USART_Transmit((char) pwm);
-				set_LED(1, 1);
-				break;
+	update_pwm(c);
+	// switch (c) {
+	// 	case :
+	// 		aw_speed = 1;
+	// 		set_LED(1, 1);
+	// 		break;
+	// 	case 'v':
+	// 		USART_Transmit((char) pwm);
+	// 		set_LED(1, 1);
+	// 		break;
 
-			case 'd':
-				set_LED(2, 1);
-				
-				update_pwm(0);
-				send_int(rpm());
-				
-				break;
-			default:
-				set_LED(3, 1);
-				break;
-		}
-	}
+	// 	case 'd':
+	// 		set_LED(2, 1);
+			
+	// 		update_pwm(0);
+	// 		send_int(rpm());
+			
+	// 		break;
+	// 	default:
+	// 		set_LED(3, 1);
+	// 		break;
+	// }
 }
 
-int control(){
+
+void control(){
 	int y;
 	int e;
 	int v;
@@ -286,8 +280,7 @@ int control(){
 	I += (K/Ti)*e;
 }
 
-int main(void)
-{
+int main(void){
 	init_LEDs();
 	init_INTs();
 	init_PWM();

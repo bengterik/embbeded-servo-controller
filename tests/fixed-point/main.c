@@ -5,7 +5,8 @@
 
 typedef uint16_t fp_int;
 
-uint8_t fp_mul(uint8_t a, fp_int b) {
+fp_int fp_mul(uint8_t a, fp_int b) {
+    fp_int a_fp = a << SHIFT_AMOUNT;
     fp_int temp = (fp_int) a * b;
 
     uint8_t res = temp >> SHIFT_AMOUNT;
@@ -13,7 +14,7 @@ uint8_t fp_mul(uint8_t a, fp_int b) {
     return res;
 }
 
-uint8_t fp_div(uint8_t a, fp_int b) {
+fp_int fp_div(uint8_t a, fp_int b) {
     fp_int temp = (uint16_t) a << SHIFT_AMOUNT;
     temp += b >> 1;
     printf("a: %d, b: %d, temp: %d\n", a, b, temp);
@@ -30,18 +31,18 @@ int main() {
     uint16_t c;
     
     c = fp_mul(a, b);
-    printf("%d * 0.5 = %d\n", a, c);
+    printf("%d * 0.5 = %d (=%d)\n", a, c, c>>SHIFT_AMOUNT);
 
     printf("\n");
     b = 0x200; // 2 in fixed point
     c = fp_div(a, b);
-    printf("%d / 2 = %d\n", a, c);
+    printf("%d / 2 = %d (=%d)\n", a, c,c>>SHIFT_AMOUNT);
     printf("\n");
 
     printf("\n");
     b = 0x300; // 2 in fixed point
     c = fp_div(a, b);
-    printf("%d / 3 = %d\n", a, c);
+    printf("%d / 3 = %d (=%d)\n", a, c, c>>SHIFT_AMOUNT);
     printf("\n");
 }
 

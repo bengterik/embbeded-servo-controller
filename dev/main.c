@@ -40,7 +40,7 @@ volatile int speed_changed_flag = 0;
 volatile int ref = 60;
 float I = 0;
 float Kp = 1;
-float Ki = 0.5;
+float Ki = 2;
 int sat_up = 120;
 int sat_low = 5;
 
@@ -241,7 +241,6 @@ unsigned char rpm() {
 ISR(USART_RX_vect, ISR_BLOCK){
 	unsigned char c = USART_Receive();
 
-	//update_pwm(c);
 	ref = c;
 	speed_changed_flag = 1;
 }
@@ -260,7 +259,7 @@ void control(){
 	if (p > 255) p = 255;
 	update_pwm(p);
 
-	I += e;
+	I += Ki*e*CONTROL_INTERVAL*0.001;
 }
 
 void startup_led_loop() {

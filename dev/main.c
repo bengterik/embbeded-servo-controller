@@ -237,11 +237,13 @@ unsigned int rpm() {
 }
 
 ISR(USART_RX_vect, ISR_BLOCK){
-	char c = USART_Receive();
+	unsigned char c = USART_Receive();
 		
-	USART_Transmit(c);
+	//USART_Transmit(c);
 
-	update_pwm(c);
+	update_pwm((c));
+	//ref = c; // What should happen when control is implemented
+
 	// switch (c) {
 	// 	case :
 	// 		aw_speed = 1;
@@ -273,11 +275,19 @@ void control(){
 	
 	y = rpm();
 	e = ref - y;
-	v = K*(e + I); // Både e och I * med K?
+	v = K*(e + I); // Både e och I * med K? Annars K*(E) + I
 	
 	update_pwm(v*255/120);
 
 	I += (K/Ti)*e;
+}
+
+void startup_led_loop() {
+	for (int i = 0; i < 4; i++) {
+		set_LED(i, 1);
+		_delay_ms(10);
+		set_LED(i, 0);
+	}
 }
 
 int main(void){
@@ -296,19 +306,9 @@ int main(void){
 	update_pwm(0);
 	
 	sei(); // Globally enable interrupts
-		
-	set_LED(0,1);
-	_delay_ms(10);
-	set_LED(0,0);
-	set_LED(1,1);
-	_delay_ms(10);
-	set_LED(1,0);
-	set_LED(2,1);
-	_delay_ms(10);
-	set_LED(2,0);
-	set_LED(3,1);
-	_delay_ms(10);
-	set_LED(3,0);	
+
+	startup_led_loop();
+
 	int led = 0;
 	while (1)
     {

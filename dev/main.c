@@ -39,8 +39,8 @@ volatile int speed_changed_flag = 0;
 // Control variables
 volatile int ref = 60;
 float I = 0;
-float Kp = 0.5;
-float Ki = 0.00;
+float Kp = 1;
+float Ki = 0.5;
 int sat_up = 120;
 int sat_low = 5;
 
@@ -255,12 +255,12 @@ void control(){
 	y = rpm();
 	e = (int) ref - y;
 
-	p = duty + (Kp*e + Ki*I); //   Både e och I * med K? Annars K*(E) + I
+	p = (Kp*e + Ki*I)*2.125; //   Både e och I * med K? Annars K*(E) + I
 	if (p < 0) p = 0;
-
+	if (p > 255) p = 255;
 	update_pwm(p);
 
-	I += Ki*e*CONTROL_INTERVAL*0.001;
+	I += e;
 }
 
 void startup_led_loop() {

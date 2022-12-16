@@ -18,6 +18,7 @@
 #include <util/delay.h>
 #include <stdio.h>
 #include <util/atomic.h>
+#include <inttypes.h>
 
 #define COUNTER_BUF_SIZE 16
 #define PRESCALER 8
@@ -25,19 +26,21 @@
 #define TICK_LOWER_BOUND 310
 #define TICK_UPPER_BOUND 17000
 
+#define CONTROL_INTERVAL 100
+
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
 
 volatile int AB = 0;
-volatile int pwm = 0;
+volatile int duty = 0;
 volatile int aw_speed = 0;
 volatile int speed_changed_flag = 0;
 
 // Control variables
-volatile int ref = 0;
-int I = 0;
-float K = 0;
-float Ti = 0;
+volatile int ref = 60;
+float I = 0;
+float Kp = 0.5;
+float Ki = 0.00;
 int sat_up = 120;
 int sat_low = 5;
 
@@ -87,12 +90,10 @@ void init_timer_16(void) {
 	//TIMSK1 |= (1<<TOIE1); // Enable overflow interrupt // IF NOT CAUGHT WILL RESET
 }
 
-int update_pwm(int value)
-{
-	pwm = value;
-	//OCR0A = value;
-	OCR0B = value;
-	return value;
+int update_pwm(int pwm) {
+	duty = pwm;
+	OCR0B = pwm;
+	return 0;
 }
 
 int init_LEDs(void)
@@ -123,7 +124,7 @@ int init_PWM(void)
 {
 	DDRD |= (1<<DDD5);	//Set PIND5 output
 	TCCR0A |= 0b10110011;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
-	TCCR0B |= 0x01;					//Internal clock selector, no prescaler
+	TCCR0B |= 0x11;					//Internal clock selector, no prescaler
 	return 1;
 }
 
@@ -233,31 +234,33 @@ unsigned long ticks_sum() {
 	return sum;
 }
 
-unsigned int rpm() {
+unsigned char rpm() {
 	return (60*F_CPU*COUNTER_BUF_SIZE)/((long) ticks_sum()*PRESCALER*96);
 }
 
 ISR(USART_RX_vect, ISR_BLOCK){
 	unsigned char c = USART_Receive();
 
-	update_pwm((c));
+	//update_pwm(c);
+	ref = c;
 	speed_changed_flag = 1;
-	//ref = c; // What should happen when control is implemented
 }
 
 
 void control(){
-	int y;
-	int e;
-	int v;
+	signed int y;
+	signed int e;
+	signed int p;
 	
 	y = rpm();
-	e = ref - y;
-	v = K*(e + I); // Både e och I * med K? Annars K*(E) + I
-	
-	update_pwm(v*255/120);
+	e = (int) ref - y;
 
-	I += (K/Ti)*e;
+	p = duty + (Kp*e + Ki*I); //   Både e och I * med K? Annars K*(E) + I
+	if (p < 0) p = 0;
+
+	update_pwm(p);
+
+	I += Ki*e*CONTROL_INTERVAL*0.001;
 }
 
 void startup_led_loop() {
@@ -281,22 +284,19 @@ int main(void){
 
 	init_encoder();
 
-	update_pwm(0);
 	
 	sei(); // Globally enable interrupts
 
 	startup_led_loop();
 
-	int led = 0;
 	while (1)
     {
-		_delay_ms(1000);
+		_delay_ms(CONTROL_INTERVAL);
 		if (speed_changed_flag) {
 			speed_changed_flag = 0;
-			USART_Transmit((char) pwm);
+			USART_Transmit((char) ref);
 		}
-		set_LED(0, !led);
-		led = !led;
+		control();
 	}
 
 	return 0;

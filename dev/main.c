@@ -31,6 +31,7 @@ volatile unsigned int cur_buff_index = 0;
 volatile int AB = 0;
 volatile int pwm = 0;
 volatile int aw_speed = 0;
+volatile int speed_changed_flag = 0;
 
 // Control variables
 volatile int ref = 0;
@@ -238,33 +239,10 @@ unsigned int rpm() {
 
 ISR(USART_RX_vect, ISR_BLOCK){
 	unsigned char c = USART_Receive();
-		
-	//USART_Transmit(c);
 
 	update_pwm((c));
+	speed_changed_flag = 1;
 	//ref = c; // What should happen when control is implemented
-
-	// switch (c) {
-	// 	case :
-	// 		aw_speed = 1;
-	// 		set_LED(1, 1);
-	// 		break;
-	// 	case 'v':
-	// 		USART_Transmit((char) pwm);
-	// 		set_LED(1, 1);
-	// 		break;
-
-	// 	case 'd':
-	// 		set_LED(2, 1);
-			
-	// 		update_pwm(0);
-	// 		send_int(rpm());
-			
-	// 		break;
-	// 	default:
-	// 		set_LED(3, 1);
-	// 		break;
-	// }
 }
 
 
@@ -313,6 +291,10 @@ int main(void){
 	while (1)
     {
 		_delay_ms(1000);
+		if (speed_changed_flag) {
+			speed_changed_flag = 0;
+			USART_Transmit((char) pwm);
+		}
 		set_LED(0, !led);
 		led = !led;
 	}

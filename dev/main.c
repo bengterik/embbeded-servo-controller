@@ -31,18 +31,22 @@
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
 
+volatile long timer_2_counter = 0;
+
 volatile int AB = 0;
 volatile int duty = 0;
 volatile int aw_speed = 0;
 volatile int speed_changed_flag = 0;
 
 // Control variables
-volatile int ref = 60;
+volatile int ref = 10;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
 int sat_up = 120;
 int sat_low = 5;
+
+volatile int nbr_ints = 0;
 
 unsigned long ticks_sum();
 
@@ -87,7 +91,15 @@ void init_timer_16(void) {
 	
 	TIFR1 |= (1<<TOV1); // Clear overflow flag
 
-	//TIMSK1 |= (1<<TOIE1); // Enable overflow interrupt // IF NOT CAUGHT WILL RESET
+	TIMSK1 |= (1<<TOIE1); // Enable overflow interrupt // IF NOT CAUGHT WILL RESET
+}
+
+void init_timer_8(void) {
+	TCCR2A = (1<<CS22) | (1<<CS21) | (1<<CS20); // Prescaler 1024
+
+	TIFR2 = (1<<TOV2); // Clear overflow flag
+
+	TIMSK2 = (1<<TOIE2); // Enable overflow interrupt
 }
 
 int update_pwm(int pwm) {
@@ -125,6 +137,7 @@ int init_PWM(void)
 	DDRD |= (1<<DDD5);	//Set PIND5 output
 	TCCR0A |= 0b10110011;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
 	TCCR0B |= 0x11;					//Internal clock selector, no prescaler
+	//TIMSK0 |= (1<<TOIE1); // Enable OVF interrupt
 	return 1;
 }
 
@@ -134,6 +147,17 @@ int init_encoder(void){
 	b = (PINC & (1<<PINC5))>>PINC5;
 	
 	AB = (a<<1) | b;
+	return 0;
+}
+
+int init_adc(void)
+{
+	DDRC &= ~(1<<DDC4); // Set ADC4 as input
+
+	ADMUX = (1<<REFS0) | (1<<ADLAR) | (1<<MUX2); // AVcc as reference and ADC4 as channel
+	ADCSRA = (1<<ADEN) | (1<<ADSC) | (1<<ADATE) | (1<<ADIE) | (0b111<<ADPS0); // Enable, start, Auto-trigger, int. enable, prescaler 128
+	ADCSRB = 0; // Free running mode
+	
 	return 0;
 }
 
@@ -240,9 +264,31 @@ unsigned char rpm() {
 
 ISR(USART_RX_vect, ISR_BLOCK){
 	unsigned char c = USART_Receive();
-
+	
 	ref = c;
 	speed_changed_flag = 1;
+}
+
+ISR(ADC_vect, ISR_BLOCK){
+	set_LED(1,1);
+	send_int(ADCH);
+	
+}
+
+ISR(TIMER0_OVF_vect, ISR_BLOCK)
+{
+	//timer_2_counter++;
+	//send_int(1);
+	//send_int(timer_2_counter);
+}
+
+ISR(TIMER1_OVF_vect, ISR_BLOCK)
+{
+	/* Timer overflow means that the motor is standing still but
+	 * won't update RPM as there are no encoder interrupts */
+	for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
+		counter_register[i] = 65535;
+	}
 }
 
 
@@ -279,22 +325,26 @@ int main(void){
 	init_RxTx();
 	USART_Init(MYUBRR);
 
+	init_timer_8();
 	init_timer_16();
 
 	init_encoder();
 
-	
+	init_adc();
+		
+	startup_led_loop();
+
 	sei(); // Globally enable interrupts
 
-	startup_led_loop();
 
 	while (1)
     {
 		_delay_ms(CONTROL_INTERVAL);
 		if (speed_changed_flag) {
 			speed_changed_flag = 0;
-			USART_Transmit((char) ref);
+			USART_Transmit((char) ref);	
 		}
+		//send_int(TCNT2);
 		control();
 	}
 

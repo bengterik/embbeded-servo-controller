@@ -28,6 +28,8 @@
 
 #define CONTROL_INTERVAL 100
 
+#define ANAOLG_CHANGE_THRESHOLD 8
+
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
 
@@ -39,13 +41,14 @@ volatile int aw_speed = 0;
 volatile int speed_changed_flag = 0;
 
 // Control variables
-volatile int ref = 10;
+volatile int ref = 50;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
 int sat_up = 120;
 int sat_low = 5;
 
+volatile int prev_adc = 128;
 volatile int nbr_ints = 0;
 
 unsigned long ticks_sum();
@@ -270,9 +273,17 @@ ISR(USART_RX_vect, ISR_BLOCK){
 }
 
 ISR(ADC_vect, ISR_BLOCK){
-	set_LED(1,1);
-	send_int(ADCH);
-	
+	unsigned char adc = ADCH;
+	signed int diff = prev_adc - adc;
+
+	if (diff > ANAOLG_CHANGE_THRESHOLD) {
+		ref++;
+		prev_adc = adc;
+	} else if (diff < -ANAOLG_CHANGE_THRESHOLD) {
+		ref--;
+		prev_adc = adc;
+	}
+	//send_int(0x00 | ref);
 }
 
 ISR(TIMER0_OVF_vect, ISR_BLOCK)

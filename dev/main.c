@@ -23,7 +23,7 @@
 #define COUNTER_BUF_SIZE 16
 #define PRESCALER 8
 
-#define TICK_LOWER_BOUND 310
+#define TICK_LOWER_BOUND 300
 #define TICK_UPPER_BOUND 17000
 
 #define CONTROL_INTERVAL 100
@@ -38,10 +38,13 @@ volatile long timer_2_counter = 0;
 volatile int AB = 0;
 volatile int duty = 0;
 volatile int aw_speed = 0;
-volatile int speed_changed_flag = 0;
+
+// Flags
+volatile int f_rec_speed = 0;
+volatile int f_send_rpm = 0;
 
 // Control variables
-volatile int ref = 50;
+volatile int ref = 10;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
@@ -102,7 +105,7 @@ void init_timer_8(void) {
 
 	TIFR2 = (1<<TOV2); // Clear overflow flag
 
-	TIMSK2 = (1<<TOIE2); // Enable overflow interrupt
+	//TIMSK2 = (1<<TOIE2); // Enable overflow interrupt
 }
 
 int update_pwm(int pwm) {
@@ -239,7 +242,7 @@ ISR(PCINT1_vect, ISR_BLOCK)
 
 	int index = cur_buff_index%COUNTER_BUF_SIZE;
 
-	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) {
+	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) { //
 		counter_register[index] = i; // Store timer value in buffer
 	} else {
 		int previous_index = (index+COUNTER_BUF_SIZE-1)%COUNTER_BUF_SIZE; // Some arithmetic to avoid negative indices
@@ -267,9 +270,16 @@ unsigned char rpm() {
 
 ISR(USART_RX_vect, ISR_BLOCK){
 	unsigned char c = USART_Receive();
-	
-	ref = c;
-	speed_changed_flag = 1;
+	if (f_rec_speed == 1) {
+		ref = c;
+		f_rec_speed = 0;
+		set_LED(3,0);
+	} else if (c == 'r') {
+		set_LED(3,1);
+		f_rec_speed = 1;
+	} else if (c == 's') {
+		f_send_rpm = 1;
+	}
 }
 
 ISR(ADC_vect, ISR_BLOCK){
@@ -310,13 +320,14 @@ void control(){
 	
 	y = rpm();
 	e = (int) ref - y;
-
 	p = (Kp*e + Ki*I)*2.125; //   Både e och I * med K? Annars K*(E) + I
 	if (p < 0) p = 0;
 	if (p > 255) p = 255;
 	update_pwm(p);
 
-	I += Ki*e*CONTROL_INTERVAL*0.001;
+	float integral = Ki*e*CONTROL_INTERVAL*0.001;
+	//send_int(integral);
+	I += integral;
 }
 
 void startup_led_loop() {
@@ -351,12 +362,12 @@ int main(void){
 	while (1)
     {
 		_delay_ms(CONTROL_INTERVAL);
-		if (speed_changed_flag) {
-			speed_changed_flag = 0;
-			USART_Transmit((char) ref);	
+		if (f_send_rpm == 1) {
+			send_int(rpm());
+			f_send_rpm = 0;
 		}
-		//send_int(TCNT2);
 		control();
+
 	}
 
 	return 0;

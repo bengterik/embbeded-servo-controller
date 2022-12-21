@@ -46,16 +46,25 @@ volatile int aw_speed = 0;
 volatile int f_rec_speed = 0;
 volatile int f_send_rpm = 0;
 
+typedef uint32_t fp_float; // Q16.16 floating point number
+
 // Control variables
 volatile int ref = 20;
-float I = 0;
-float Kp = 1;
-float Ki = 2;
+fp_float I = 0;
+fp_float Kp = 1;
+fp_float Ki = 2;
 
 volatile int prev_adc = 128;
 volatile int nbr_ints = 0;
 
 unsigned long ticks_sum();
+
+fp_float fp_mul(fp_float a, fp_float b) {
+	fp_float temp = (fp_float) a * b;
+	fp_float res = temp >> 16;
+
+	return res;
+}
 
 void USART_Transmit(char data) {
 	while(!(UCSR0A & (1<<UDRE0))); // Wait for empty transmit buffer
@@ -307,7 +316,7 @@ ISR(TIMER1_OVF_vect, ISR_BLOCK)
 	}
 }
 
-float sat(int x, int min, int max) {
+fp_float sat(int x, int min, int max) {
 	if (x < min) {
 		return min;
 	} else if (x > max) {
@@ -329,7 +338,7 @@ void control(){
 	if (p > 255) p = 255;
 	update_pwm(p);
 
-	float integral = Ki*e*CONTROL_INTERVAL*0.001;
+	fp_float integral = Ki*e*CONTROL_INTERVAL*0.001;
 	//send_int(integral);
 	I += integral;
 	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);

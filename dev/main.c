@@ -26,7 +26,7 @@
 #define TICK_LOWER_BOUND 200
 #define TICK_UPPER_BOUND 17000
 
-#define CONTROL_INTERVAL 100
+#define CONTROL_INTERVAL 16 // Derived from Timer2 prescaler
 
 #define ANAOLG_CHANGE_THRESHOLD 8
 
@@ -47,7 +47,7 @@ volatile int f_rec_speed = 0;
 volatile int f_send_rpm = 0;
 
 // Control variables
-volatile int ref = 50;
+volatile int ref = 10;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
@@ -102,11 +102,11 @@ void init_timer_16(void) {
 }
 
 void init_timer_8(void) {
-	TCCR2A = (1<<CS22) | (1<<CS21) | (1<<CS20); // Prescaler 1024
+	TCCR2B |= (1<<CS22);// | (1<<CS21); //| (1<<CS20); // Prescaler 64
+	
+	TIFR2 |= (1<<TOV2); // Clear overflow flag
 
-	TIFR2 = (1<<TOV2); // Clear overflow flag
-
-	//TIMSK2 = (1<<TOIE2); // Enable overflow interrupt
+	TIMSK2 |= (1<<TOIE2); // Enable overflow interrupt // IF NOT CAUGHT WILL RESET
 }
 
 int update_pwm(int pwm) {
@@ -298,13 +298,6 @@ ISR(ADC_vect, ISR_BLOCK){
 	//send_int(0x00 | ref);
 }
 
-ISR(TIMER0_OVF_vect, ISR_BLOCK)
-{
-	//timer_2_counter++;
-	//send_int(1);
-	//send_int(timer_2_counter);
-}
-
 ISR(TIMER1_OVF_vect, ISR_BLOCK)
 {
 	/* Timer overflow means that the motor is standing still but
@@ -342,6 +335,11 @@ void control(){
 	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
 }
 
+ISR(TIMER2_OVF_vect, ISR_BLOCK)
+{
+	control();
+}
+
 void startup_led_loop() {
 	for (int i = 0; i < 4; i++) {
 		set_LED(i, 1);
@@ -373,13 +371,10 @@ int main(void){
 
 	while (1)
     {
-		_delay_ms(CONTROL_INTERVAL);
 		if (f_send_rpm == 1) {
 			send_int(0x00 | rpm());
 			f_send_rpm = 0;
 		} 
-		control();
-
 	}
 
 	return 0;

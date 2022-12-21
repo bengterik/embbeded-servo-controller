@@ -23,12 +23,15 @@
 #define COUNTER_BUF_SIZE 16
 #define PRESCALER 8
 
-#define TICK_LOWER_BOUND 300
+#define TICK_LOWER_BOUND 200
 #define TICK_UPPER_BOUND 17000
 
 #define CONTROL_INTERVAL 100
 
 #define ANAOLG_CHANGE_THRESHOLD 8
+
+#define I_SAT_UPR 50
+#define I_SAT_LOWR -50
 
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
@@ -44,12 +47,10 @@ volatile int f_rec_speed = 0;
 volatile int f_send_rpm = 0;
 
 // Control variables
-volatile int ref = 10;
+volatile int ref = 50;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
-int sat_up = 120;
-int sat_low = 5;
 
 volatile int prev_adc = 128;
 volatile int nbr_ints = 0;
@@ -276,6 +277,7 @@ ISR(USART_RX_vect, ISR_BLOCK){
 		set_LED(3,0);
 	} else if (c == 'r') {
 		set_LED(3,1);
+		f_send_rpm = 1;
 		f_rec_speed = 1;
 	} else if (c == 's') {
 		f_send_rpm = 1;
@@ -312,6 +314,15 @@ ISR(TIMER1_OVF_vect, ISR_BLOCK)
 	}
 }
 
+float sat(int x, int min, int max) {
+	if (x < min) {
+		return min;
+	} else if (x > max) {
+		return max;
+	} else {
+		return x;
+	}
+}
 
 void control(){
 	signed int y;
@@ -320,14 +331,15 @@ void control(){
 	
 	y = rpm();
 	e = (int) ref - y;
-	p = (Kp*e + Ki*I)*2.125; //   Både e och I * med K? Annars K*(E) + I
-	if (p < 0) p = 0;
+	p = (Kp*e + Ki*I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
+	if (p < 0 || p > 65000) p = 0; // might overflow depending on type
 	if (p > 255) p = 255;
 	update_pwm(p);
 
 	float integral = Ki*e*CONTROL_INTERVAL*0.001;
 	//send_int(integral);
 	I += integral;
+	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
 }
 
 void startup_led_loop() {
@@ -352,7 +364,7 @@ int main(void){
 
 	init_encoder();
 
-	init_adc();
+	//init_adc();
 		
 	startup_led_loop();
 
@@ -363,9 +375,9 @@ int main(void){
     {
 		_delay_ms(CONTROL_INTERVAL);
 		if (f_send_rpm == 1) {
-			send_int(rpm());
+			send_int(0x00 | rpm());
 			f_send_rpm = 0;
-		}
+		} 
 		control();
 
 	}

@@ -47,7 +47,7 @@ volatile int f_rec_speed = 0;
 volatile int f_send_rpm = 0;
 
 // Control variables
-volatile int ref = 10;
+volatile int ref = 20;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
@@ -102,7 +102,7 @@ void init_timer_16(void) {
 }
 
 void init_timer_8(void) {
-	TCCR2B |= (1<<CS22);// | (1<<CS21); //| (1<<CS20); // Prescaler 64
+	TCCR2B |= (1<<CS22);// | (1<<CS21); //| (1<<CS20); // Prescaler 8
 	
 	TIFR2 |= (1<<TOV2); // Clear overflow flag
 
@@ -362,7 +362,7 @@ int main(void){
 
 	init_encoder();
 
-	//init_adc();
+	init_adc();
 		
 	startup_led_loop();
 

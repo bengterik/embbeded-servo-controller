@@ -26,7 +26,7 @@
 #define TICK_LOWER_BOUND 200
 #define TICK_UPPER_BOUND 17000
 
-#define CONTROL_INTERVAL 16 // Derived from Timer2 prescaler
+#define CONTROL_INTERVAL 16 //Derived from Timer2 prescaler, in ms
 
 #define ANAOLG_CHANGE_THRESHOLD 8
 
@@ -46,13 +46,17 @@ volatile int aw_speed = 0;
 volatile int f_rec_speed = 0;
 volatile int f_send_rpm = 0;
 
-typedef uint32_t fp_float; // Q16.16 floating point number
+// Fixed point
+#define SHIFT_AMOUNT 8
+typedef int16_t fp_float; // Q8.8 signed floating point number
 
 // Control variables
 volatile int ref = 20;
 fp_float I = 0;
-fp_float Kp = 1;
-fp_float Ki = 2;
+fp_float Kp = 0x0100; // 1
+fp_float Ki = 0x0200; // 2
+
+#define CONTROL_INTEGRAL_CONSTANT 0x0004 // 0b 0000 0000 . 0000 0100 = 0.015625
 
 volatile int prev_adc = 128;
 volatile int nbr_ints = 0;
@@ -60,9 +64,20 @@ volatile int nbr_ints = 0;
 unsigned long ticks_sum();
 
 fp_float fp_mul(fp_float a, fp_float b) {
-	fp_float temp = (fp_float) a * b;
-	fp_float res = temp >> 16;
+	uint32_t temp = a * b;
+    int8_t a_int = a >> SHIFT_AMOUNT;
+    int8_t b_int = b >> SHIFT_AMOUNT;
 
+    // Overflow check
+    if (a_int>=0 && b_int>=0 && temp > 0x7F0000) { // Both positive, max 127
+        temp = 0x7F0000;
+    } else if (a_int<0 && b_int<0 && temp > 0x7F000) { // Both negative, max 127
+        temp = 0x7F0000;
+    } else if (((a_int<0 && b_int>=0) || (a_int>=0 && b_int<0)) && temp < 0x800000) { // Different signs, min -128
+        temp = 0x800000;
+    }
+
+    fp_float res = temp >> SHIFT_AMOUNT;
 	return res;
 }
 
@@ -226,29 +241,9 @@ int set_LED(int led, int value)
 	return 1;
 }
 
-void pwm_duty_update(int a, int b) {
-	char newAB = (a<<1) | b;
-	
-	// switch (AB) {
-	// 	case 0: if(newAB==1) v+=1; else v-=1; break;
-	// 	case 1: if(newAB==3) v+=1; else v-=1; break;
-	// 	case 3: if(newAB==2) v+=1; else v-=1; break;
-	// 	case 2: if(newAB==0) v+=1; else v-=1; break;
-	// }
-	
-	AB = newAB;
-}
-
 ISR(PCINT1_vect, ISR_BLOCK)
 {
 	int i = TCNT1; // Read timer
-
-	// int a, b;
-	// a = (PIND & (1<<PIND7))>>PIND7; // Right-shift to get the read in first bit
-	// b = (PINC & (1<<PINC5))>>PINC5;
-	
-	// oldV = v;
-	// pwm_duty_update(a, b);
 
 	int index = cur_buff_index%COUNTER_BUF_SIZE;
 
@@ -328,18 +323,17 @@ fp_float sat(int x, int min, int max) {
 
 void control(){
 	signed int y;
-	signed int e;
-	signed int p;
+	fp_float e;
+	int p;
 	
 	y = rpm();
 	e = (int) ref - y;
-	p = (Kp*e + Ki*I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
+	p = fp_mul((fp_mul(Kp, e) + fp_mul(Ki,I)), 2.125)>>SHIFT_AMOUNT; // Correct rounding?
 	if (p < 0 || p > 65000) p = 0; // might overflow depending on type
 	if (p > 255) p = 255;
 	update_pwm(p);
 
-	fp_float integral = Ki*e*CONTROL_INTERVAL*0.001;
-	//send_int(integral);
+	fp_float integral = fp_mul(e<<SHIFT_AMOUNT,CONTROL_INTEGRAL_CONSTANT); // e * (Ki * INTERVAL / 1000)
 	I += integral;
 	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
 }

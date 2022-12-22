@@ -47,7 +47,7 @@ volatile int f_rec_speed = 0;
 volatile int f_send_rpm = 0;
 
 // Control variables
-volatile int ref = 20;
+volatile int ref = 30;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
@@ -318,19 +318,22 @@ float sat(int x, int min, int max) {
 }
 
 void control(){
-	signed int y;
-	signed int e;
-	signed int p;
+	int8_t y;
+	int8_t e;
+	int16_t p;
 	
 	y = rpm();
-	e = (int) ref - y;
+	e = ref - y;
 	p = (Kp*e + Ki*I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
-	if (p < 0 || p > 65000) p = 0; // might overflow depending on type
-	if (p > 255) p = 255;
-	update_pwm(p);
+	int16_t new_duty = duty+p;
+	if (new_duty < 0) p = 0;
+	if (new_duty > 255) p = 255;
+	update_pwm(new_duty);
+	//send_int(111);
+	//send_int(p);
+	//send_int(OCR0B);
 
 	float integral = Ki*e*CONTROL_INTERVAL*0.001;
-	//send_int(integral);
 	I += integral;
 	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
 }
@@ -362,7 +365,7 @@ int main(void){
 
 	init_encoder();
 
-	init_adc();
+	//init_adc();
 		
 	startup_led_loop();
 

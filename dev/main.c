@@ -47,7 +47,7 @@ volatile int f_rec_speed = 0;
 volatile int f_send_rpm = 0;
 
 // Control variables
-volatile int ref = 30;
+volatile int ref = 15;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
@@ -321,16 +321,21 @@ void control(){
 	int8_t y;
 	int8_t e;
 	int16_t p;
-	
+	// signed int y;
+	// signed int e;
+	// signed int p;
 	y = rpm();
 	e = ref - y;
-	p = (Kp*e + Ki*I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
-	int16_t new_duty = duty+p;
-	if (new_duty < 0) p = 0;
-	if (new_duty > 255) p = 255;
+	p = (Kp*e + I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
+	if (p < 0) p = 0;
+	if (p > 255) p = 255;
+	int16_t new_duty = p;
+	
 	update_pwm(new_duty);
 	//send_int(111);
 	//send_int(p);
+	//send_int(0x00 | duty);
+	//send_int(0x00 | ref);
 	//send_int(OCR0B);
 
 	float integral = Ki*e*CONTROL_INTERVAL*0.001;

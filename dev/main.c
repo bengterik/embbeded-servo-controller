@@ -26,7 +26,7 @@
 #define TICK_LOWER_BOUND 200
 #define TICK_UPPER_BOUND 17000
 
-#define CONTROL_INTERVAL 16 // Derived from Timer2 prescaler
+#define CONTROL_INTERVAL 16 //Derived from Timer2 prescaler, in ms
 
 #define ANAOLG_CHANGE_THRESHOLD 8
 
@@ -46,16 +46,41 @@ volatile int aw_speed = 0;
 volatile int f_rec_speed = 0;
 volatile int f_send_rpm = 0;
 
+// Fixed point
+#define SHIFT_AMOUNT 8
+typedef int16_t fp_float; // Q8.8 signed floating point number
+
 // Control variables
-volatile int ref = 15;
-float I = 0;
-float Kp = 1;
-float Ki = 3;
+volatile uint8_t ref = 15;
+fp_float I = 0;
+fp_float Kp = 0x0200; // 0000 0001 . 0000 0000 
+fp_float Ki = 0x0400; // 0000 0010 . 0000 0000
+
+#define CONTROL_INTEGRAL_CONSTANT 0x0004 // 0000 0000 . 0000 0100 = 0.015625
 
 volatile int prev_adc = 128;
 volatile int nbr_ints = 0;
 
 unsigned long ticks_sum();
+
+fp_float fp_mul(fp_float a, fp_float b) {
+	uint32_t temp = a * b;
+    
+	/*int8_t a_int = a >> SHIFT_AMOUNT;
+    int8_t b_int = b >> SHIFT_AMOUNT;
+
+    // Overflow check
+    if (a_int>=0 && b_int>=0 && temp > 0x7F0000) { // Both positive, max 127
+        temp = 0x7F0000;
+    } else if (a_int<0 && b_int<0 && temp > 0x7F000) { // Both negative, max 127
+        temp = 0x7F0000;
+    } else if (((a_int<0 && b_int>=0) || (a_int>=0 && b_int<0)) && temp < 0x800000) { // Different signs, min -128
+        temp = 0x800000;
+    }*/
+
+    fp_float res = temp >> SHIFT_AMOUNT;
+	return res;
+}
 
 void USART_Transmit(char data) {
 	while(!(UCSR0A & (1<<UDRE0))); // Wait for empty transmit buffer
@@ -217,27 +242,9 @@ int set_LED(int led, int value)
 	return 1;
 }
 
-void pwm_duty_update(int a, int b) {
-	char newAB = (a<<1) | b;
-	
-	// switch (AB) {
-	// 	case 0: if(newAB==1) v+=1; else v-=1; break;
-	// 	case 1: if(newAB==3) v+=1; else v-=1; break;
-	// 	case 3: if(newAB==2) v+=1; else v-=1; break;
-	// 	case 2: if(newAB==0) v+=1; else v-=1; break;
-	// }
-	
-	AB = newAB;
-}
-
 ISR(PCINT1_vect, ISR_BLOCK)
 {
 	int i = TCNT1; // Read timer
-
-	// int a, b;
-	// a = (PIND & (1<<PIND7))>>PIND7; // Right-shift to get the read in first bit
-	// b = (PINC & (1<<PINC5))>>PINC5;
-
 
 	int index = cur_buff_index%COUNTER_BUF_SIZE;
 
@@ -245,7 +252,6 @@ ISR(PCINT1_vect, ISR_BLOCK)
 		counter_register[index] = i; // Store timer value in buffer
 		cur_buff_index++; 
 	}
-	
 	
 	TCNT1 = 0;	// Timer = 0
 }
@@ -302,7 +308,7 @@ ISR(TIMER1_OVF_vect, ISR_BLOCK)
 	}
 }
 
-float sat(int x, int min, int max) {
+fp_float sat(int x, int min, int max) {
 	if (x < min) {
 		return min;
 	} else if (x > max) {
@@ -313,21 +319,25 @@ float sat(int x, int min, int max) {
 }
 
 void control(){
-	int8_t y;
-	int8_t e;
+	uint8_t y;
+	fp_float e;
 	int16_t p;
 
 	y = rpm();
-	e = ref - y;
-	p = (Kp*e + I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
-	if (p < 0) p = 0;
-	if (p > 255) p = 255;
-	int16_t new_duty = p;
-	
-	update_pwm(new_duty);
+	e = (ref - y)<<SHIFT_AMOUNT;
 
-	float integral = Ki*e*CONTROL_INTERVAL*0.001;
+	p = (fp_mul(Kp, e) + I + 0x80)>>SHIFT_AMOUNT; // 0x80 = 0.5
+
+	if (p < 0) p = 0; // might overflow depending on type
+	if (p > 255) p = 255;
+	update_pwm(p);
+
+	fp_float integral = fp_mul(e, fp_mul(Ki, CONTROL_INTEGRAL_CONSTANT)); // e * (Ki * INTERVAL / 1000)
 	I += integral;
+	send_int(0x00 | e>>SHIFT_AMOUNT);
+	
+	//send_int(0x00 | I>>SHIFT_AMOUNT);
+	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
 }
 
 ISR(TIMER2_OVF_vect, ISR_BLOCK)

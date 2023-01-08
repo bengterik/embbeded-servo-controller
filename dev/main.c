@@ -51,12 +51,12 @@ volatile int f_send_rpm = 0;
 typedef int16_t fp_float; // Q8.8 signed floating point number
 
 // Control variables
-volatile int ref = 20;
+volatile int ref = 30;
 fp_float I = 0;
-fp_float Kp = 0x0100; // 1
-fp_float Ki = 0x0200; // 2
+fp_float Kp = 0x0300; // 0000 0001 . 0000 0000 
+fp_float Ki = 0x0500; // 0000 0010 . 0000 0000
 
-#define CONTROL_INTEGRAL_CONSTANT 0x0004 // 0b 0000 0000 . 0000 0100 = 0.015625
+#define CONTROL_INTEGRAL_CONSTANT 0x0004 // 0000 0000 . 0000 0100 = 0.015625
 
 volatile int prev_adc = 128;
 volatile int nbr_ints = 0;
@@ -65,7 +65,8 @@ unsigned long ticks_sum();
 
 fp_float fp_mul(fp_float a, fp_float b) {
 	uint32_t temp = a * b;
-    int8_t a_int = a >> SHIFT_AMOUNT;
+    
+	/*int8_t a_int = a >> SHIFT_AMOUNT;
     int8_t b_int = b >> SHIFT_AMOUNT;
 
     // Overflow check
@@ -75,7 +76,7 @@ fp_float fp_mul(fp_float a, fp_float b) {
         temp = 0x7F0000;
     } else if (((a_int<0 && b_int>=0) || (a_int>=0 && b_int<0)) && temp < 0x800000) { // Different signs, min -128
         temp = 0x800000;
-    }
+    }*/
 
     fp_float res = temp >> SHIFT_AMOUNT;
 	return res;
@@ -322,18 +323,18 @@ fp_float sat(int x, int min, int max) {
 }
 
 void control(){
-	signed int y;
+	uint8_t y;
 	fp_float e;
-	int p;
-	
+	int16_t p;
+
 	y = rpm();
-	e = (int) ref - y;
-	p = fp_mul((fp_mul(Kp, e) + fp_mul(Ki,I)), 2.125)>>SHIFT_AMOUNT; // Correct rounding?
-	if (p < 0 || p > 65000) p = 0; // might overflow depending on type
+	e = ((int16_t) ref - y)<<SHIFT_AMOUNT;
+	p = (fp_mul(Kp, e) + I + 0x80)>>SHIFT_AMOUNT; // Correct rounding?
+	if (p < 0) p = 0; // might overflow depending on type
 	if (p > 255) p = 255;
 	update_pwm(p);
-
-	fp_float integral = fp_mul(e<<SHIFT_AMOUNT,CONTROL_INTEGRAL_CONSTANT); // e * (Ki * INTERVAL / 1000)
+	//send_int(p);
+	fp_float integral = fp_mul(e, fp_mul(Ki, CONTROL_INTEGRAL_CONSTANT)); // e * (Ki * INTERVAL / 1000)
 	I += integral;
 	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
 }
@@ -365,7 +366,7 @@ int main(void){
 
 	init_encoder();
 
-	init_adc();
+	//init_adc();
 		
 	startup_led_loop();
 

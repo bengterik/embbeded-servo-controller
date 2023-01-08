@@ -267,7 +267,7 @@ unsigned long ticks_sum() {
 }
 
 unsigned char rpm() {
-	return (60*F_CPU*COUNTER_BUF_SIZE)/((long) ticks_sum()*PRESCALER*96);
+	return (60*F_CPU*COUNTER_BUF_SIZE)/((long) (ticks_sum()+1)*PRESCALER*96);
 }
 
 ISR(USART_RX_vect, ISR_BLOCK){

@@ -51,7 +51,7 @@ volatile int f_send_rpm = 0;
 typedef int16_t fp_float; // Q8.8 signed floating point number
 
 // Control variables
-volatile uint8_t ref = 30;
+volatile int8_t ref = 30;
 fp_float I = 0;
 fp_float Kp = 0x0200; // 0000 0001 . 0000 0000 
 fp_float Ki = 0x0400; // 0000 0010 . 0000 0000
@@ -64,7 +64,7 @@ volatile int nbr_ints = 0;
 unsigned long ticks_sum();
 
 fp_float fp_mul(fp_float a, fp_float b) {
-	uint32_t temp = a * b;
+	int32_t temp = a * b;
     
 	/*int8_t a_int = a >> SHIFT_AMOUNT;
     int8_t b_int = b >> SHIFT_AMOUNT;
@@ -319,15 +319,14 @@ fp_float sat(int x, int min, int max) {
 }
 
 void control(){
-	uint8_t y;
+	int16_t y;
 	fp_float e;
 	int16_t p;
 
-	y = rpm();
+	y = (int16_t) rpm();
 	e = (ref - y)<<SHIFT_AMOUNT;
 
 	p = (fp_mul(Kp, e) + I + 0x80)>>SHIFT_AMOUNT; // 0x80 = 0.5
-
 	if (p < 0) p = 0; // might overflow depending on type
 	if (p > 255) p = 255;
 	update_pwm(p);

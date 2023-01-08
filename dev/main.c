@@ -51,7 +51,7 @@ volatile int f_send_rpm = 0;
 typedef int16_t fp_float; // Q8.8 signed floating point number
 
 // Control variables
-volatile uint8_t ref = 15;
+volatile uint8_t ref = 30;
 fp_float I = 0;
 fp_float Kp = 0x0200; // 0000 0001 . 0000 0000 
 fp_float Ki = 0x0400; // 0000 0010 . 0000 0000
@@ -250,12 +250,8 @@ ISR(PCINT1_vect, ISR_BLOCK)
 
 	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) { //
 		counter_register[index] = i; // Store timer value in buffer
-	} else {
-		int previous_index = (index+COUNTER_BUF_SIZE-1)%COUNTER_BUF_SIZE; // Some arithmetic to avoid negative indices
-		counter_register[index] = counter_register[previous_index]; // If value is outside range take previous value
+		cur_buff_index++; 
 	}
-	
-	cur_buff_index++; 
 	
 	TCNT1 = 0;	// Timer = 0
 }
@@ -328,39 +324,21 @@ void control(){
 	int16_t p;
 
 	y = rpm();
-	e = ((int16_t) ref - y)<<SHIFT_AMOUNT;
+	e = (ref - y)<<SHIFT_AMOUNT;
+
 	p = (fp_mul(Kp, e) + I + 0x80)>>SHIFT_AMOUNT; // 0x80 = 0.5
+
 	if (p < 0) p = 0; // might overflow depending on type
 	if (p > 255) p = 255;
 	update_pwm(p);
 
 	fp_float integral = fp_mul(e, fp_mul(Ki, CONTROL_INTEGRAL_CONSTANT)); // e * (Ki * INTERVAL / 1000)
 	I += integral;
+	send_int(0x00 | e>>SHIFT_AMOUNT);
+	
+	//send_int(0x00 | I>>SHIFT_AMOUNT);
 	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
 }
-
-// int8_t y;
-// 	int8_t e;
-// 	int16_t p;
-// 	// signed int y;
-// 	// signed int e;
-// 	// signed int p;
-// 	y = rpm();
-// 	e = ref - y;
-// 	p = (Kp*e + I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
-// 	if (p < 0) p = 0;
-// 	if (p > 255) p = 255;
-// 	int16_t new_duty = p;
-	
-// 	update_pwm(new_duty);
-// 	//send_int(111);
-// 	//send_int(p);
-// 	//send_int(0x00 | duty);
-// 	//send_int(0x00 | ref);
-// 	//send_int(OCR0B);
-
-// 	float integral = Ki*e*CONTROL_INTERVAL*0.001;
-// 	I += integral;
 
 ISR(TIMER2_OVF_vect, ISR_BLOCK)
 {

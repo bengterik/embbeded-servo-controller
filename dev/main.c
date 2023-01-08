@@ -51,7 +51,7 @@ volatile int f_send_rpm = 0;
 typedef int16_t fp_float; // Q8.8 signed floating point number
 
 // Control variables
-volatile int ref = 15;
+volatile int ref = 30;
 float I = 0;
 float Kp = 1;
 float Ki = 2;
@@ -328,27 +328,17 @@ fp_float sat(int x, int min, int max) {
 }
 
 void control(){
-	uint8_t y;
-	fp_float e;
+	int8_t y;
+	int8_t e;
 	int16_t p;
-	// signed int y;
-	// signed int e;
-	// signed int p;
+	
 	y = rpm();
-	e = (ref - y)<<SHIFT_AMOUNT;
-
-	p = (fp_mul(Kp, e) + I + 0x80)>>SHIFT_AMOUNT; // 0x80 = 0.5
-
-	if (p < 0) p = 0; // might overflow depending on type
+	e = ref - y;
+	p = (Kp*e + I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
+	if (p < 0) p = 0;
 	if (p > 255) p = 255;
 	int16_t new_duty = p;
-	
 	update_pwm(new_duty);
-	//send_int(111);
-	//send_int(p);
-	//send_int(0x00 | duty);
-	//send_int(0x00 | ref);
-	//send_int(OCR0B);
 
 	float integral = Ki*e*CONTROL_INTERVAL*0.001;
 	I += integral;

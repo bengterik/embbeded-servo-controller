@@ -50,7 +50,7 @@ volatile int f_send_rpm = 0;
 volatile int ref = 15;
 float I = 0;
 float Kp = 1;
-float Ki = 2;
+float Ki = 3;
 
 volatile int prev_adc = 128;
 volatile int nbr_ints = 0;
@@ -237,20 +237,15 @@ ISR(PCINT1_vect, ISR_BLOCK)
 	// int a, b;
 	// a = (PIND & (1<<PIND7))>>PIND7; // Right-shift to get the read in first bit
 	// b = (PINC & (1<<PINC5))>>PINC5;
-	
-	// oldV = v;
-	// pwm_duty_update(a, b);
+
 
 	int index = cur_buff_index%COUNTER_BUF_SIZE;
 
 	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) { //
 		counter_register[index] = i; // Store timer value in buffer
-	} else {
-		int previous_index = (index+COUNTER_BUF_SIZE-1)%COUNTER_BUF_SIZE; // Some arithmetic to avoid negative indices
-		counter_register[index] = counter_register[previous_index]; // If value is outside range take previous value
+		cur_buff_index++; 
 	}
 	
-	cur_buff_index++; 
 	
 	TCNT1 = 0;	// Timer = 0
 }
@@ -321,9 +316,7 @@ void control(){
 	int8_t y;
 	int8_t e;
 	int16_t p;
-	// signed int y;
-	// signed int e;
-	// signed int p;
+
 	y = rpm();
 	e = ref - y;
 	p = (Kp*e + I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
@@ -332,15 +325,9 @@ void control(){
 	int16_t new_duty = p;
 	
 	update_pwm(new_duty);
-	//send_int(111);
-	//send_int(p);
-	//send_int(0x00 | duty);
-	//send_int(0x00 | ref);
-	//send_int(OCR0B);
 
 	float integral = Ki*e*CONTROL_INTERVAL*0.001;
 	I += integral;
-	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
 }
 
 ISR(TIMER2_OVF_vect, ISR_BLOCK)

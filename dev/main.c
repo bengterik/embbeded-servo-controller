@@ -317,7 +317,7 @@ void control(){
 
 	fp_float integral = fp_mul(e, fp_mul(Ki, CONTROL_INTEGRAL_CONSTANT)); // e * (Ki * INTERVAL / 1000)
 
-	if (p != 255) {
+	if (p != 0 && p != 255) { // if PWM not saturated
 		I += integral;
 	}
 

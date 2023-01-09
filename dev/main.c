@@ -51,7 +51,7 @@ volatile int f_send_rpm = 0;
 typedef int32_t fp_float; // Q24.8 signed floating point number
 
 // Control variables
-volatile int8_t ref = 50;
+volatile int8_t ref = 20;
 fp_float I = 0;
 fp_float Kp = 0x0300; // 0001 . 0000 0000 
 fp_float Ki = 0x0700; // 0010 . 0000 0000
@@ -59,7 +59,7 @@ fp_float Ki = 0x0700; // 0010 . 0000 0000
 #define CONTROL_INTEGRAL_CONSTANT 0x4 // . 0000 0100 = 0.015625
 #define POINT_FIVE 0x80 // . 1000 0000 = 0.5
 
-volatile int8_t adc_offset;
+volatile int8_t adc_offset = 0;
 
 unsigned long ticks_sum();
 
@@ -316,14 +316,11 @@ void control(){
 	update_pwm(p);
 
 	fp_float integral = fp_mul(e, fp_mul(Ki, CONTROL_INTEGRAL_CONSTANT)); // e * (Ki * INTERVAL / 1000)
-	//I = sat(I + integral, I_SAT_LWR, I_SAT_UPR);
-	// if (p == 0 || p == 255) {
-	// 	I += sat(I+integral, I_SAT_LWR, I_SAT_UPR);
-	// } else {
-	// 	I += integral;
-	// }	
 
-	I += integral;
+	if (p != 255) {
+		I += integral;
+	}
+
 	//send_int(I>>SHIFT_AMOUNT);
 	//send_int(duty);
 }
@@ -332,7 +329,6 @@ void analog_offset() {
 	ADCSRA |= (1<<ADSC); // Start conversion
 	while (ADCSRA & (1<<ADSC)); // Wait for conversion to finish
 	adc_offset = (128 - ADCH)>>3;
-	send_int(adc_offset);
 }
 
 ISR(TIMER2_OVF_vect, ISR_BLOCK)
@@ -340,8 +336,6 @@ ISR(TIMER2_OVF_vect, ISR_BLOCK)
 	analog_offset();
 	control();
 }
-
-
 
 void startup_led_loop() {
 	for (int i = 0; i < 4; i++) {

@@ -82,7 +82,6 @@ unsigned char USART_Receive(void) {
 
 void init_RxTx(void){
 	DDRD &= ~(1<<DDD0);	// Set PD0 set as input
-	//PORTD &= (1<<PD0);
 	
 	DDRD |= (1<<DDD1);	//Set PD1 output
 }
@@ -92,9 +91,7 @@ void USART_Init(unsigned int ubrr) {
 	UBRR0L = (unsigned char) ubrr;
 	
 	UCSR0B = (1<<RXEN0) | (1<<TXEN0) | (1<<RXCIE0); // Enable RX, TX and RX interrupt
-	//UCSR0C &= ~(1<<USBS0); // 1 stop bit
 	UCSR0C = (3<<UCSZ00); // 8 bits
-	// enable interrupt on data receive
 }
 
 void send_int(unsigned int value) {
@@ -156,8 +153,7 @@ int init_PWM(void)
 {
 	DDRD |= (1<<DDD5);	//Set PIND5 output
 	TCCR0A |= 0b10110011;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
-	TCCR0B |= 0x11;					//Internal clock selector, no prescaler
-	//TIMSK0 |= (1<<TOIE1); // Enable OVF interrupt
+	TCCR0B |= 0x1;					//Internal clock selector, no prescaler
 	return 1;
 }
 
@@ -272,19 +268,6 @@ ISR(USART_RX_vect, ISR_BLOCK){
 	}
 }
 
-// ISR(ADC_vect, ISR_BLOCK){
-// 	unsigned char adc = ADCH;
-// 	signed int diff = prev_adc - adc;
-
-// 	if (diff > ANALOG_CHANGE_THRESHOLD) {
-// 		ref++;
-// 		prev_adc = adc;
-// 	} else if (diff < -ANALOG_CHANGE_THRESHOLD) {
-// 		ref--;
-// 		prev_adc = adc;
-// 	}
-// }
-
 ISR(TIMER1_OVF_vect, ISR_BLOCK)
 {
 	/* Timer overflow means that the motor is standing still but
@@ -320,9 +303,6 @@ void control(){
 	if (p != 0 && p != 255) { // if PWM not saturated
 		I += integral;
 	}
-
-	//send_int(I>>SHIFT_AMOUNT);
-	//send_int(duty);
 }
 
 void analog_offset() {

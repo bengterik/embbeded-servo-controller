@@ -48,15 +48,16 @@ volatile int f_send_rpm = 0;
 
 // Fixed point
 #define SHIFT_AMOUNT 8
-typedef int16_t fp_float; // Q8.8 signed floating point number
+typedef int32_t fp_float; // Q24.8 signed floating point number
 
 // Control variables
-volatile int8_t ref = 30;
+volatile int8_t ref = 10;
 fp_float I = 0;
-fp_float Kp = 0x0200; // 0000 0001 . 0000 0000 
-fp_float Ki = 0x0400; // 0000 0010 . 0000 0000
+fp_float Kp = 0x0200; // 0001 . 0000 0000 
+fp_float Ki = 0x0400; // 0010 . 0000 0000
 
-#define CONTROL_INTEGRAL_CONSTANT 0x0004 // 0000 0000 . 0000 0100 = 0.015625
+#define CONTROL_INTEGRAL_CONSTANT 0x4 // . 0000 0100 = 0.015625
+#define POINT_FIVE 0x80 // . 1000 0000 = 0.5
 
 volatile int prev_adc = 128;
 volatile int nbr_ints = 0;
@@ -326,14 +327,14 @@ void control(){
 	y = (int16_t) rpm();
 	e = (ref - y)<<SHIFT_AMOUNT;
 
-	p = (fp_mul(Kp, e) + I + 0x80)>>SHIFT_AMOUNT; // 0x80 = 0.5
+	p = (fp_mul(Kp, e) + I + POINT_FIVE)>>SHIFT_AMOUNT; // 0x80 = 0.5
 	if (p < 0) p = 0; // might overflow depending on type
 	if (p > 255) p = 255;
 	update_pwm(p);
 
 	fp_float integral = fp_mul(e, fp_mul(Ki, CONTROL_INTEGRAL_CONSTANT)); // e * (Ki * INTERVAL / 1000)
 	I += integral;
-	send_int(0x00 | e>>SHIFT_AMOUNT);
+	//send_int(0x00 | e>>SHIFT_AMOUNT);
 	
 	//send_int(0x00 | I>>SHIFT_AMOUNT);
 	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);

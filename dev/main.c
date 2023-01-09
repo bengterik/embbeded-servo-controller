@@ -28,10 +28,10 @@
 
 #define CONTROL_INTERVAL 16 //Derived from Timer2 prescaler, in ms
 
-#define ANAOLG_CHANGE_THRESHOLD 8
+#define ANALOG_CHANGE_THRESHOLD 8
 
-#define I_SAT_UPR 50
-#define I_SAT_LOWR -50
+#define I_SAT_UPR 0xFF0000 // 255
+#define I_SAT_LWR 0x9C4000 // -100
 
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
@@ -51,33 +51,20 @@ volatile int f_send_rpm = 0;
 typedef int32_t fp_float; // Q24.8 signed floating point number
 
 // Control variables
-volatile int8_t ref = 10;
+volatile int8_t ref = 50;
 fp_float I = 0;
-fp_float Kp = 0x0200; // 0001 . 0000 0000 
-fp_float Ki = 0x0400; // 0010 . 0000 0000
+fp_float Kp = 0x0300; // 0001 . 0000 0000 
+fp_float Ki = 0x0700; // 0010 . 0000 0000
 
 #define CONTROL_INTEGRAL_CONSTANT 0x4 // . 0000 0100 = 0.015625
 #define POINT_FIVE 0x80 // . 1000 0000 = 0.5
 
-volatile int prev_adc = 128;
-volatile int nbr_ints = 0;
+volatile int8_t adc_offset;
 
 unsigned long ticks_sum();
 
 fp_float fp_mul(fp_float a, fp_float b) {
-	int32_t temp = a * b;
-    
-	/*int8_t a_int = a >> SHIFT_AMOUNT;
-    int8_t b_int = b >> SHIFT_AMOUNT;
-
-    // Overflow check
-    if (a_int>=0 && b_int>=0 && temp > 0x7F0000) { // Both positive, max 127
-        temp = 0x7F0000;
-    } else if (a_int<0 && b_int<0 && temp > 0x7F000) { // Both negative, max 127
-        temp = 0x7F0000;
-    } else if (((a_int<0 && b_int>=0) || (a_int>=0 && b_int<0)) && temp < 0x800000) { // Different signs, min -128
-        temp = 0x800000;
-    }*/
+	int64_t temp = a * b;
 
     fp_float res = temp >> SHIFT_AMOUNT;
 	return res;
@@ -188,8 +175,7 @@ int init_adc(void)
 	DDRC &= ~(1<<DDC4); // Set ADC4 as input
 
 	ADMUX = (1<<REFS0) | (1<<ADLAR) | (1<<MUX2); // AVcc as reference and ADC4 as channel
-	ADCSRA = (1<<ADEN) | (1<<ADSC) | (1<<ADATE) | (1<<ADIE) | (0b111<<ADPS0); // Enable, start, Auto-trigger, int. enable, prescaler 128
-	ADCSRB = 0; // Free running mode
+	ADCSRA = (1<<ADEN) | (1<<ADSC) | (0b000<<ADPS0); // Enable, start, Auto-trigger, int. enable, no prescaler
 	
 	return 0;
 }
@@ -286,19 +272,18 @@ ISR(USART_RX_vect, ISR_BLOCK){
 	}
 }
 
-ISR(ADC_vect, ISR_BLOCK){
-	unsigned char adc = ADCH;
-	signed int diff = prev_adc - adc;
+// ISR(ADC_vect, ISR_BLOCK){
+// 	unsigned char adc = ADCH;
+// 	signed int diff = prev_adc - adc;
 
-	if (diff > ANAOLG_CHANGE_THRESHOLD) {
-		ref++;
-		prev_adc = adc;
-	} else if (diff < -ANAOLG_CHANGE_THRESHOLD) {
-		ref--;
-		prev_adc = adc;
-	}
-	//send_int(0x00 | ref);
-}
+// 	if (diff > ANALOG_CHANGE_THRESHOLD) {
+// 		ref++;
+// 		prev_adc = adc;
+// 	} else if (diff < -ANALOG_CHANGE_THRESHOLD) {
+// 		ref--;
+// 		prev_adc = adc;
+// 	}
+// }
 
 ISR(TIMER1_OVF_vect, ISR_BLOCK)
 {
@@ -309,11 +294,9 @@ ISR(TIMER1_OVF_vect, ISR_BLOCK)
 	}
 }
 
-fp_float sat(int x, int min, int max) {
-	if (x < min) {
-		return min;
-	} else if (x > max) {
-		return max;
+fp_float sat(fp_float x, fp_float min, fp_float max) {
+	if (x < min || x > max) {
+		return 0;
 	} else {
 		return x;
 	}
@@ -325,25 +308,40 @@ void control(){
 	int16_t p;
 
 	y = (int16_t) rpm();
-	e = (ref - y)<<SHIFT_AMOUNT;
+	e = ((ref+adc_offset) - y)<<SHIFT_AMOUNT;
 
-	p = (fp_mul(Kp, e) + I + POINT_FIVE)>>SHIFT_AMOUNT; // 0x80 = 0.5
+	p = (fp_mul(Kp, e) + I + POINT_FIVE)>>SHIFT_AMOUNT; // Kp * e + I + 0.5
 	if (p < 0) p = 0; // might overflow depending on type
 	if (p > 255) p = 255;
 	update_pwm(p);
 
 	fp_float integral = fp_mul(e, fp_mul(Ki, CONTROL_INTEGRAL_CONSTANT)); // e * (Ki * INTERVAL / 1000)
+	//I = sat(I + integral, I_SAT_LWR, I_SAT_UPR);
+	// if (p == 0 || p == 255) {
+	// 	I += sat(I+integral, I_SAT_LWR, I_SAT_UPR);
+	// } else {
+	// 	I += integral;
+	// }	
+
 	I += integral;
-	//send_int(0x00 | e>>SHIFT_AMOUNT);
-	
-	//send_int(0x00 | I>>SHIFT_AMOUNT);
-	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
+	//send_int(I>>SHIFT_AMOUNT);
+	//send_int(duty);
+}
+
+void analog_offset() {
+	ADCSRA |= (1<<ADSC); // Start conversion
+	while (ADCSRA & (1<<ADSC)); // Wait for conversion to finish
+	adc_offset = (128 - ADCH)>>3;
+	send_int(adc_offset);
 }
 
 ISR(TIMER2_OVF_vect, ISR_BLOCK)
 {
+	analog_offset();
 	control();
 }
+
+
 
 void startup_led_loop() {
 	for (int i = 0; i < 4; i++) {
@@ -367,7 +365,7 @@ int main(void){
 
 	init_encoder();
 
-	//init_adc();
+	init_adc();
 		
 	startup_led_loop();
 

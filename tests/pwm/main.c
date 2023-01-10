@@ -120,7 +120,7 @@ int init_INTs(void)
 int init_PWM(void)
 {
 	DDRD |= (1<<DDD5);	//Set PIND5 output
-	TCCR0A |= 0b10110011;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
+	TCCR0A |= 0b10110001;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
 	TCCR0B |= 0x01;					//Internal clock selector, no prescaler
 	return 1;
 }

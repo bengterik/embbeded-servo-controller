@@ -31,13 +31,10 @@ int main(void)
 	init_PWM();
 	
 	sei(); // Globally enable interrupts
-	
-	
-        
+	updatePWM(10);
 	while (1)
     {
 		_delay_ms(500);
-		updatePWM(v);
 	}
     return 0;
 }
@@ -72,7 +69,7 @@ ISR(PCINT1_vect, ISR_BLOCK)
 {
 	int a, b;
 	int oldV;
-	a = (PIND & (1<<PIND7))>>PIND7; // Right-shift to get the read in first bit
+	a = (PIND & (1<<PIND7))>>PIND7;
 	b = (PINC & (1<<PINC5))>>PINC5;
 	
 	set_LED(3,a);
@@ -123,7 +120,7 @@ int init_INTs(void)
 int init_PWM(void)
 {
 	DDRD |= (1<<DDD5);	//Set PIND5 output
-	TCCR0A |= 0b10110011;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
+	TCCR0A |= 0b10110001;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
 	TCCR0B |= 0x01;					//Internal clock selector, no prescaler
 	return 1;
 }

@@ -28,10 +28,10 @@
 
 #define CONTROL_INTERVAL 16 //Derived from Timer2 prescaler, in ms
 
-#define ANAOLG_CHANGE_THRESHOLD 8
+#define ANALOG_CHANGE_THRESHOLD 8
 
-#define I_SAT_UPR 50
-#define I_SAT_LOWR -50
+#define I_SAT_UPR 0xFF0000 // 255
+#define I_SAT_LWR 0x9C4000 // -100
 
 volatile unsigned int counter_register[COUNTER_BUF_SIZE];
 volatile unsigned int cur_buff_index = 0;
@@ -40,7 +40,6 @@ volatile long timer_2_counter = 0;
 
 volatile int AB = 0;
 volatile int duty = 0;
-volatile int aw_speed = 0;
 
 // Flags
 volatile int f_rec_speed = 0;
@@ -48,33 +47,23 @@ volatile int f_send_rpm = 0;
 
 // Fixed point
 #define SHIFT_AMOUNT 8
-typedef int16_t fp_float; // Q8.8 signed floating point number
+typedef int32_t fp_float; // Q24.8 signed floating point number
 
 // Control variables
-volatile int ref = 30;
-float I = 0;
-float Kp = 1;
-float Ki = 2;
+volatile int8_t ref = 5;
+fp_float I = 0;
+fp_float Kp = 0x0110; // 0001 . 0000 0000 
+fp_float Ki = 0x0210; // 0010 . 0000 0000
 
-volatile int prev_adc = 128;
-volatile int nbr_ints = 0;
+#define CONTROL_INTEGRAL_CONSTANT 0x4 // . 0000 0100 = 0.015625
+#define POINT_FIVE 0x80 // . 1000 0000 = 0.5
+
+volatile int8_t adc_offset = 0;
 
 unsigned long ticks_sum();
 
 fp_float fp_mul(fp_float a, fp_float b) {
-	uint32_t temp = a * b;
-    
-	/*int8_t a_int = a >> SHIFT_AMOUNT;
-    int8_t b_int = b >> SHIFT_AMOUNT;
-
-    // Overflow check
-    if (a_int>=0 && b_int>=0 && temp > 0x7F0000) { // Both positive, max 127
-        temp = 0x7F0000;
-    } else if (a_int<0 && b_int<0 && temp > 0x7F000) { // Both negative, max 127
-        temp = 0x7F0000;
-    } else if (((a_int<0 && b_int>=0) || (a_int>=0 && b_int<0)) && temp < 0x800000) { // Different signs, min -128
-        temp = 0x800000;
-    }*/
+	int64_t temp = a * b;
 
     fp_float res = temp >> SHIFT_AMOUNT;
 	return res;
@@ -92,7 +81,6 @@ unsigned char USART_Receive(void) {
 
 void init_RxTx(void){
 	DDRD &= ~(1<<DDD0);	// Set PD0 set as input
-	//PORTD &= (1<<PD0);
 	
 	DDRD |= (1<<DDD1);	//Set PD1 output
 }
@@ -102,9 +90,7 @@ void USART_Init(unsigned int ubrr) {
 	UBRR0L = (unsigned char) ubrr;
 	
 	UCSR0B = (1<<RXEN0) | (1<<TXEN0) | (1<<RXCIE0); // Enable RX, TX and RX interrupt
-	//UCSR0C &= ~(1<<USBS0); // 1 stop bit
 	UCSR0C = (3<<UCSZ00); // 8 bits
-	// enable interrupt on data receive
 }
 
 void send_int(unsigned int value) {
@@ -165,19 +151,17 @@ int init_INTs(void)
 int init_PWM(void)
 {
 	DDRD |= (1<<DDD5);	//Set PIND5 output
-	TCCR0A |= 0b10110011;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
+	TCCR0A |= 0b10110001;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
 	TCCR0B |= 0x11;					//Internal clock selector, no prescaler
-	//TIMSK0 |= (1<<TOIE1); // Enable OVF interrupt
 	return 1;
 }
 
-int init_encoder(void){
+void init_encoder(void){
 	int a, b;
 	a = (PIND & (1<<PIND7))>>PIND7; // Right-shift to get the read in first bit
 	b = (PINC & (1<<PINC5))>>PINC5;
 	
 	AB = (a<<1) | b;
-	return 0;
 }
 
 int init_adc(void)
@@ -185,8 +169,7 @@ int init_adc(void)
 	DDRC &= ~(1<<DDC4); // Set ADC4 as input
 
 	ADMUX = (1<<REFS0) | (1<<ADLAR) | (1<<MUX2); // AVcc as reference and ADC4 as channel
-	ADCSRA = (1<<ADEN) | (1<<ADSC) | (1<<ADATE) | (1<<ADIE) | (0b111<<ADPS0); // Enable, start, Auto-trigger, int. enable, prescaler 128
-	ADCSRB = 0; // Free running mode
+	ADCSRA = (1<<ADEN) | (1<<ADSC) | (0b000<<ADPS0); // Enable, start, Auto-trigger, int. enable, no prescaler
 	
 	return 0;
 }
@@ -244,23 +227,11 @@ ISR(PCINT1_vect, ISR_BLOCK)
 {
 	int i = TCNT1; // Read timer
 
-	// int a, b;
-	// a = (PIND & (1<<PIND7))>>PIND7; // Right-shift to get the read in first bit
-	// b = (PINC & (1<<PINC5))>>PINC5;
-	
-	// oldV = v;
-	// pwm_duty_update(a, b);
-
-	int index = cur_buff_index%COUNTER_BUF_SIZE;
-
-	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) { //
+	if (i > TICK_LOWER_BOUND) { 
+		int index = cur_buff_index%COUNTER_BUF_SIZE;
 		counter_register[index] = i; // Store timer value in buffer
-	} else {
-		int previous_index = (index+COUNTER_BUF_SIZE-1)%COUNTER_BUF_SIZE; // Some arithmetic to avoid negative indices
-		counter_register[index] = counter_register[previous_index]; // If value is outside range take previous value
+		cur_buff_index++;
 	}
-	
-	cur_buff_index++; 
 	
 	TCNT1 = 0;	// Timer = 0
 }
@@ -276,7 +247,7 @@ unsigned long ticks_sum() {
 }
 
 unsigned char rpm() {
-	return (60*F_CPU*COUNTER_BUF_SIZE)/((long) ticks_sum()*PRESCALER*96);
+	return (60*F_CPU*COUNTER_BUF_SIZE)/((long) (ticks_sum()+1)*PRESCALER*96);
 }
 
 ISR(USART_RX_vect, ISR_BLOCK){
@@ -294,59 +265,53 @@ ISR(USART_RX_vect, ISR_BLOCK){
 	}
 }
 
-ISR(ADC_vect, ISR_BLOCK){
-	unsigned char adc = ADCH;
-	signed int diff = prev_adc - adc;
-
-	if (diff > ANAOLG_CHANGE_THRESHOLD) {
-		ref++;
-		prev_adc = adc;
-	} else if (diff < -ANAOLG_CHANGE_THRESHOLD) {
-		ref--;
-		prev_adc = adc;
-	}
-	//send_int(0x00 | ref);
-}
-
 ISR(TIMER1_OVF_vect, ISR_BLOCK)
 {
 	/* Timer overflow means that the motor is standing still but
 	 * won't update RPM as there are no encoder interrupts */
 	for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
-		counter_register[i] = 65535;
+		counter_register[i] = 65000; // Slowest
 	}
 }
 
-fp_float sat(int x, int min, int max) {
-	if (x < min) {
-		return min;
-	} else if (x > max) {
-		return max;
+fp_float sat(fp_float x, fp_float min, fp_float max) {
+	if (x < min || x > max) {
+		return 0;
 	} else {
 		return x;
 	}
 }
 
 void control(){
-	int8_t y;
-	int8_t e;
+	int16_t y;
+	fp_float e;
 	int16_t p;
-	
-	y = rpm();
-	e = ref - y;
-	p = (Kp*e + I)*2.125 + 0.5; //   Både e och I * med K? Annars K*(E) + I
-	if (p < 0) p = 0;
+
+	y = (int16_t) rpm();
+	e = ((ref+adc_offset) - y)<<SHIFT_AMOUNT;
+
+	p = (fp_mul(Kp, e) + I + POINT_FIVE)>>SHIFT_AMOUNT; // Kp * e + I + 0.5
+	if (p < 0) p = 0; // might overflow depending on type
 	if (p > 255) p = 255;
 	int16_t new_duty = p;
 	update_pwm(new_duty);
 
-	float integral = Ki*e*CONTROL_INTERVAL*0.001;
-	I += integral;
-	//I = sat(I + integral, I_SAT_LOWR, I_SAT_UPR);
+	fp_float integral = fp_mul(e, fp_mul(Ki, CONTROL_INTEGRAL_CONSTANT)); // e * (Ki * INTERVAL / 1000)
+
+	if (p != 0 && p != 255) { // if PWM not saturated
+		I += integral;
+	}
+}
+
+void analog_offset() {
+	ADCSRA |= (1<<ADSC); // Start conversion
+	while (ADCSRA & (1<<ADSC)); // Wait for conversion to finish
+	adc_offset = (128 - ADCH)>>3;
 }
 
 ISR(TIMER2_OVF_vect, ISR_BLOCK)
 {
+	analog_offset();
 	control();
 }
 
@@ -378,13 +343,12 @@ int main(void){
 
 	sei(); // Globally enable interrupts
 
-
 	while (1)
     {
 		if (f_send_rpm == 1) {
 			send_int(0x00 | rpm());
 			f_send_rpm = 0;
-		} 
+		}		
 	}
 
 	return 0;

@@ -45,11 +45,9 @@ int main(void)
 	while (1)
     {
 		c =	USART_Receive();
-		c++;
 		USART_Transmit(c);
 		set_LED(1, !led);
 		led = !led;
-		//_delay_ms(200);
 	}
     return 0;
 }

@@ -24,7 +24,7 @@
 #define PRESCALER 8
 
 #define TICK_LOWER_BOUND 200
-#define TICK_UPPER_BOUND 170000
+#define TICK_UPPER_BOUND 17000
 
 #define CONTROL_INTERVAL 16 //Derived from Timer2 prescaler, in ms
 
@@ -40,7 +40,6 @@ volatile long timer_2_counter = 0;
 
 volatile int AB = 0;
 volatile int duty = 0;
-volatile int aw_speed = 0;
 
 // Flags
 volatile int f_rec_speed = 0;
@@ -51,7 +50,7 @@ volatile int f_send_rpm = 0;
 typedef int32_t fp_float; // Q24.8 signed floating point number
 
 // Control variables
-volatile int8_t ref = 20;
+volatile int8_t ref = 5;
 fp_float I = 0;
 fp_float Kp = 0x0110; // 0001 . 0000 0000 
 fp_float Ki = 0x0210; // 0010 . 0000 0000
@@ -157,13 +156,12 @@ int init_PWM(void)
 	return 1;
 }
 
-int init_encoder(void){
+void init_encoder(void){
 	int a, b;
 	a = (PIND & (1<<PIND7))>>PIND7; // Right-shift to get the read in first bit
 	b = (PINC & (1<<PINC5))>>PINC5;
 	
 	AB = (a<<1) | b;
-	return 0;
 }
 
 int init_adc(void)
@@ -229,11 +227,10 @@ ISR(PCINT1_vect, ISR_BLOCK)
 {
 	int i = TCNT1; // Read timer
 
-
-	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) { 
+	if (i > TICK_LOWER_BOUND) { 
 		int index = cur_buff_index%COUNTER_BUF_SIZE;
 		counter_register[index] = i; // Store timer value in buffer
-		cur_buff_index++; 
+		cur_buff_index++;
 	}
 	
 	TCNT1 = 0;	// Timer = 0
@@ -345,13 +342,12 @@ int main(void){
 
 	sei(); // Globally enable interrupts
 
-
 	while (1)
     {
 		if (f_send_rpm == 1) {
 			send_int(0x00 | rpm());
 			f_send_rpm = 0;
-		} 
+		}		
 	}
 
 	return 0;

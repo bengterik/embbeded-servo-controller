@@ -69,7 +69,7 @@ ISR(PCINT1_vect, ISR_BLOCK)
 {
 	int a, b;
 	int oldV;
-	a = (PIND & (1<<PIND7))>>PIND7; // Right-shift to get the read in first bit
+	a = (PIND & (1<<PIND7))>>PIND7;
 	b = (PINC & (1<<PINC5))>>PINC5;
 	
 	set_LED(3,a);

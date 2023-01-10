@@ -31,13 +31,10 @@ int main(void)
 	init_PWM();
 	
 	sei(); // Globally enable interrupts
-	
-	
-        
+	updatePWM(10);
 	while (1)
     {
 		_delay_ms(500);
-		updatePWM(v);
 	}
     return 0;
 }

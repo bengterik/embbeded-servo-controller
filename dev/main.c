@@ -24,7 +24,7 @@
 #define PRESCALER 8
 
 #define TICK_LOWER_BOUND 200
-#define TICK_UPPER_BOUND 17000
+#define TICK_UPPER_BOUND 170000
 
 #define CONTROL_INTERVAL 16 //Derived from Timer2 prescaler, in ms
 
@@ -53,8 +53,8 @@ typedef int32_t fp_float; // Q24.8 signed floating point number
 // Control variables
 volatile int8_t ref = 20;
 fp_float I = 0;
-fp_float Kp = 0x0300; // 0001 . 0000 0000 
-fp_float Ki = 0x0700; // 0010 . 0000 0000
+fp_float Kp = 0x0110; // 0001 . 0000 0000 
+fp_float Ki = 0x0210; // 0010 . 0000 0000
 
 #define CONTROL_INTEGRAL_CONSTANT 0x4 // . 0000 0100 = 0.015625
 #define POINT_FIVE 0x80 // . 1000 0000 = 0.5
@@ -152,8 +152,8 @@ int init_INTs(void)
 int init_PWM(void)
 {
 	DDRD |= (1<<DDD5);	//Set PIND5 output
-	TCCR0A |= 0b10110011;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
-	TCCR0B |= 0x1;					//Internal clock selector, no prescaler
+	TCCR0A |= 0b10110001;			//Configure fast PWM mode, non-inverted output on OCA and inverted output on OCB
+	TCCR0B |= 0x11;					//Internal clock selector, no prescaler
 	return 1;
 }
 
@@ -229,9 +229,9 @@ ISR(PCINT1_vect, ISR_BLOCK)
 {
 	int i = TCNT1; // Read timer
 
-	int index = cur_buff_index%COUNTER_BUF_SIZE;
 
-	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) { //
+	if (i > TICK_LOWER_BOUND && i < TICK_UPPER_BOUND) { 
+		int index = cur_buff_index%COUNTER_BUF_SIZE;
 		counter_register[index] = i; // Store timer value in buffer
 		cur_buff_index++; 
 	}
@@ -273,7 +273,7 @@ ISR(TIMER1_OVF_vect, ISR_BLOCK)
 	/* Timer overflow means that the motor is standing still but
 	 * won't update RPM as there are no encoder interrupts */
 	for(int i = 0; i < COUNTER_BUF_SIZE; i++) {
-		counter_register[i] = 65535;
+		counter_register[i] = 65000; // Slowest
 	}
 }
 

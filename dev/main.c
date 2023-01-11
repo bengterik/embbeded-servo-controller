@@ -59,6 +59,7 @@ fp_float Ki = 0x0210; // 0010 . 0000 0000
 #define POINT_FIVE 0x80 // . 1000 0000 = 0.5
 
 volatile int8_t adc_offset = 0;
+volatile int pot_mode = 0;
 
 unsigned long ticks_sum();
 
@@ -166,6 +167,8 @@ void init_encoder(void){
 
 int init_adc(void)
 {
+	DDRD &= ~(1<<DDC6); // Set PIND5 as input for potentiometer mode
+
 	DDRC &= ~(1<<DDC4); // Set ADC4 as input
 
 	ADMUX = (1<<REFS0) | (1<<ADLAR) | (1<<MUX2); // AVcc as reference and ADC4 as channel
@@ -225,7 +228,12 @@ int set_LED(int led, int value)
 
 ISR(PCINT1_vect, ISR_BLOCK)
 {
+
 	int i = TCNT1; // Read timer
+	
+	pot_mode = (PIND & (1<<PIND6))>>PIND6;
+
+	set_LED(0, pot_mode);
 
 	if (i > TICK_LOWER_BOUND) { 
 		int index = cur_buff_index%COUNTER_BUF_SIZE;
@@ -253,7 +261,7 @@ unsigned char rpm() {
 ISR(USART_RX_vect, ISR_BLOCK){
 	unsigned char c = USART_Receive();
 	if (f_rec_speed == 1) {
-		ref = c;
+		if (pot_mode == 0) ref = c; // if potentiometer mode off
 		f_rec_speed = 0;
 		set_LED(3,0);
 	} else if (c == 'r') {
@@ -306,7 +314,11 @@ void control(){
 void analog_offset() {
 	ADCSRA |= (1<<ADSC); // Start conversion
 	while (ADCSRA & (1<<ADSC)); // Wait for conversion to finish
-	adc_offset = (128 - ADCH)>>3;
+	if (pot_mode == 1) {
+		adc_offset = ADCH>>1;
+	} else {
+		adc_offset = (128 - ADCH)>>3;
+	}
 }
 
 ISR(TIMER2_OVF_vect, ISR_BLOCK)
@@ -337,20 +349,18 @@ int main(void){
 
 	init_encoder();
 
-	//init_adc();
+	init_adc();
 		
 	startup_led_loop();
 
 	sei(); // Globally enable interrupts
-
+	
 	while (1)
     {
 		if (f_send_rpm == 1) {
 			send_int(0x00 | rpm());
 			f_send_rpm = 0;
-		}		
+		}
 	}
-
 	return 0;
-
 }
